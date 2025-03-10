@@ -44,7 +44,7 @@ class PanternBot(commands.Bot):
         # Load cogs:
         print("loading cogs:")
         extensions = [
-            'cogs.drinks_handler.py'
+            'cogs.drinks_handler'
         ]
 
         for extension in extensions:
