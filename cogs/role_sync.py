@@ -2,6 +2,7 @@ import asyncio
 import time
 import sqlite3 
 import psycopg2
+import datetime
 
 import discord
 from discord import app_commands
@@ -21,6 +22,8 @@ class RoleSync(commands.Cog):
         return []
     
     def connect(self):
+        print("<------connect------->")
+
         d = {}
         """ Connect to the PostgreSQL database server """
         conn = None
@@ -35,12 +38,13 @@ class RoleSync(commands.Cog):
             # create a cursor
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-        # execute a statement
-            print('------members--------:')
+            # execute a statement
             cur.execute('''
                         SELECT 
                             Members.student_id,
-                            ARRAY_AGG(Mandates.position_id) AS position_ids
+                            ARRAY_AGG(Mandates.position_id) AS position_ids,
+                            ARRAY_AGG(Mandates.start_date) AS start_dates,
+                            ARRAY_AGG(Mandates.end_date) AS end_dates
                         FROM Members
                         LEFT JOIN Mandates ON Members.id = Mandates.member_id
                         GROUP BY Members.id;
@@ -49,9 +53,31 @@ class RoleSync(commands.Cog):
             output = cur.fetchall() 
 
             for row in output:
-                d[row["student_id"]] = row["position_ids"]
+                id = row["student_id"]
+                print("---------------")
+                print(id)
+                for i in range(len(row["position_ids"])):
+                    mandate = row["position_ids"][i]
+                    if mandate is None:
+                        continue
+                    start = row["start_dates"][i]
+                    end = row["end_dates"][i]
+                    now = datetime.date.today()
+                    print(mandate)
+                    print(start)
+                    print(end)
+                    print(now)
 
-            print(d)
+                    if now > start and end > now:
+                        if not id in d:
+                            d[id] = []
+                        d[id].append(mandate)
+
+                print("---------------")
+                
+
+
+
             print("ullas mandat:")
             print(d["ul3574bl-s"])
 
@@ -60,22 +86,29 @@ class RoleSync(commands.Cog):
         # close the communication with the PostgreSQL
             cur.close()
         except (Exception, psycopg2.DatabaseError) as error:
+            print("<Error>")
+            print(type(error))
             print(error)
+            print("</Error>")
         finally:
             if conn is not None:
                 conn.close()
                 print('Database connection closed.')
+
+        print("</------connect------->")
+        
         return d
 
     def syncAll(self): 
-        print("<------test------->")
+        print("<------syncAll------->")
         # Get postgresql data
         roles_dict = self.connect()
-        print("=== Roles Dict ===")
-        print(roles_dict)
+        # print("=== Roles Dict ===")
+        # print(roles_dict)
 
         # Connecting to sqlite 
         # connection object 
+        print('Connecting to the sqlite database...')
         connection_obj = sqlite3.connect('database.db') 
 
         # cursor object 
@@ -86,10 +119,9 @@ class RoleSync(commands.Cog):
 
         cursor_obj.execute(statement) 
         output = cursor_obj.fetchall() 
-        for row in output: 
-            stil = row#[2:-3]
+        for row in output:
+            stil = row[0]
             print(stil)
-            print(":") 
             try:
                 if roles_dict[stil] is None:
                     print("No roles")
@@ -103,9 +135,30 @@ class RoleSync(commands.Cog):
 
         # Close the connection 
         connection_obj.close()
+        print('Database connection closed.')
 
 
-        print("</------test------->")
+
+        print("</------syncAll------->")
+
+
+
+    # Slash command to give test role
+    @app_commands.command(name="getrole", description="Give yourself test role.")
+    async def getRole(self, interaction: discord.Interaction):
+        role = discord.utils.get(interaction.guild.roles, name="Test role")
+        await interaction.user.add_roles(role)
+
+        await interaction.response.send_message(f"Tried giving you the test role.")
+
+    # Slash command to remove test role
+    @app_commands.command(name="loserole", description="Remove test role from yourself.")
+    async def loseRole(self, interaction: discord.Interaction):
+        role = discord.utils.get(interaction.guild.roles, name="Test role")
+        await interaction.user.remove_roles(role)
+
+        await interaction.response.send_message(f"Tried giving you the test role.")
+
 
 
     

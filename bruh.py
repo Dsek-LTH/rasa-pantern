@@ -9,10 +9,25 @@ connection_obj = sqlite3.connect('database.db')
 # cursor object 
 cursor_obj = connection_obj.cursor() 
 
-# to select all column we will use 
-statement = '''PUT   stil_id FROM connected_accounts'''
+statement = '''SELECT * FROM connected_accounts'''
+res = cursor_obj.execute(statement) 
 
-cursor_obj.execute(statement) 
+for row in res:
+    print(row)
+
+
+statement = '''SELECT * FROM authorized_discord_users'''
+res = cursor_obj.execute(statement) 
+
+for row in res:
+    print(row)
+
+
+statement = '''SELECT * FROM authorized_dsek_users'''
+res = cursor_obj.execute(statement) 
+
+for row in res:
+    print(row)
     
 
 connection_obj.commit() 
