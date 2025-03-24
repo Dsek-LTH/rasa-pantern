@@ -21,6 +21,7 @@ class RoleSync(commands.Cog):
         return []
     
     def connect(self):
+        d = {}
         """ Connect to the PostgreSQL database server """
         conn = None
         try:
@@ -47,15 +48,14 @@ class RoleSync(commands.Cog):
 
             output = cur.fetchall() 
 
-
-            print("here1")
-
-            d = {}
             for row in output:
                 d[row["student_id"]] = row["position_ids"]
 
-            print("here2")
-            print(d["li2953be-s"])
+            print(d)
+            print("ullas mandat:")
+            print(d["ul3574bl-s"])
+
+            
 
         # close the communication with the PostgreSQL
             cur.close()
@@ -65,9 +65,15 @@ class RoleSync(commands.Cog):
             if conn is not None:
                 conn.close()
                 print('Database connection closed.')
+        return d
 
     def syncAll(self): 
         print("<------test------->")
+        # Get postgresql data
+        roles_dict = self.connect()
+        print("=== Roles Dict ===")
+        print(roles_dict)
+
         # Connecting to sqlite 
         # connection object 
         connection_obj = sqlite3.connect('database.db') 
@@ -79,10 +85,18 @@ class RoleSync(commands.Cog):
         statement = '''SELECT stil_id FROM connected_accounts'''
 
         cursor_obj.execute(statement) 
-
         output = cursor_obj.fetchall() 
         for row in output: 
-            print(row)
+            stil = row#[2:-3]
+            print(stil)
+            print(":") 
+            try:
+                if roles_dict[stil] is None:
+                    print("No roles")
+                else:
+                    print(roles_dict[stil])
+            except (KeyError) as key_error:
+                print("Error: does not exist in member database")
             
 
         connection_obj.commit() 
@@ -90,21 +104,11 @@ class RoleSync(commands.Cog):
         # Close the connection 
         connection_obj.close()
 
-        self.connect()
 
         print("</------test------->")
 
 
     
-
-
-
-
-
-
-
-    
-
 
 
 # ----------------------MAIN PROGRAM----------------------
