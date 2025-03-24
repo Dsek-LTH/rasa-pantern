@@ -13,10 +13,14 @@ from psycopg2.extras import RealDictCursor
 
 class RoleSync(commands.Cog):
 
+
     bot: commands.Bot
+    
+    guild: discord.Guild 
 
     def __init__(self, bot):
         self.bot = bot
+        self.guild = bot.get_guild(1348726708202635326) # Hard coded to test server TODO: add to env file.
 
     def queryPostgres(self, query): 
         return []
@@ -99,7 +103,7 @@ class RoleSync(commands.Cog):
         
         return d
 
-    def syncAll(self): 
+    async def syncAll(self): 
         print("<------syncAll------->")
         # Get postgresql data
         roles_dict = self.connect()
@@ -115,18 +119,20 @@ class RoleSync(commands.Cog):
         cursor_obj = connection_obj.cursor() 
 
         # to select all column we will use 
-        statement = '''SELECT stil_id FROM connected_accounts'''
+        statement = '''SELECT stil_id, user_id FROM connected_accounts'''
 
         cursor_obj.execute(statement) 
         output = cursor_obj.fetchall() 
         for row in output:
             stil = row[0]
+            dcid = row[1]
             print(stil)
+            print(dcid)
             try:
-                if roles_dict[stil] is None:
-                    print("No roles")
-                else:
+                if roles_dict[stil] is not None:
                     print(roles_dict[stil])
+                    user = await self.guild.fetch_member(dcid)
+                    print(user.display_name)
             except (KeyError) as key_error:
                 print("Error: does not exist in member database")
             
@@ -171,6 +177,6 @@ async def setup(bot: commands.Bot) -> None:
     print("\tcogs.role_sync begin loading")
     rs = RoleSync(bot)
     await bot.add_cog(rs)
-    rs.syncAll()
+    await rs.syncAll()
 
         
