@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from config import config
+from psycopg2.extras import RealDictCursor
 
 
 class RoleSync(commands.Cog):
@@ -31,18 +32,31 @@ class RoleSync(commands.Cog):
             conn = psycopg2.connect(**params)
             
             # create a cursor
-            cur = conn.cursor()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
             
         # execute a statement
             print('------members--------:')
-            cur.execute('SELECT studentId AND mandates FROM Member')
-
-            # display the PostgreSQL database server version
+            cur.execute('''
+                        SELECT 
+                            Members.student_id,
+                            ARRAY_AGG(Mandates.position_id) AS position_ids
+                        FROM Members
+                        LEFT JOIN Mandates ON Members.id = Mandates.member_id
+                        GROUP BY Members.id;
+                        ''')
 
             output = cur.fetchall() 
-            for row in output: 
-                print(row)
-        
+
+
+            print("here1")
+
+            d = {}
+            for row in output:
+                d[row["student_id"]] = row["position_ids"]
+
+            print("here2")
+            print(d["li2953be-s"])
+
         # close the communication with the PostgreSQL
             cur.close()
         except (Exception, psycopg2.DatabaseError) as error:
