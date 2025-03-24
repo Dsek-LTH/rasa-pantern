@@ -35,3 +35,9 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
     FOREIGN KEY (user_id) REFERENCES authorized_discord_users(user_id),
     FOREIGN KEY (stil_id) REFERENCES authorized_dsek_users(stil_id)
 );
+
+CREATE TABLE IF NOT EXISTS connected_discord_roles (
+    position_id TEXT NOT NULL,
+    discord_role_id TEXT NOT NULL,
+    PRIMARY KEY (position_id)
+);
