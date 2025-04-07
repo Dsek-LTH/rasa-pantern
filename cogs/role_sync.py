@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 import asyncio
 import time
 import sqlite3 
@@ -29,7 +30,7 @@ class RoleSync(commands.Cog):
         print("<------connect------->")
 
         d = {}
-        """ Connect to the PostgreSQL database server """
+        # Connect to the PostgreSQL database server
         conn = None
         try:
             # read connection parameters
@@ -67,15 +68,16 @@ class RoleSync(commands.Cog):
                     start = row["start_dates"][i]
                     end = row["end_dates"][i]
                     now = datetime.date.today()
-                    print(mandate)
-                    print(start)
-                    print(end)
-                    print(now)
 
                     if now > start and end > now:
                         if not id in d:
                             d[id] = []
                         d[id].append(mandate)
+                        print(mandate)
+                        print(start)
+                        print(end)
+                        print(now)
+                        
 
                 print("---------------")
                 
@@ -102,6 +104,21 @@ class RoleSync(commands.Cog):
         print("</------connect------->")
         
         return d
+
+    def translateRoles(self, web_roles, cursor_obj):
+        if web_roles == None:
+            return {}
+        roles = {}
+        for web_role in web_roles:
+            statement = f'''SELECT discord_role_id FROM connected_discord_roles WHERE position_id =\"{web_role}\"'''
+
+            cursor_obj.execute(statement) 
+            output = cursor_obj.fetchall()
+            print(output)
+            roles = output
+
+             
+        return roles
 
     async def syncAll(self): 
         print("<------syncAll------->")
@@ -133,6 +150,7 @@ class RoleSync(commands.Cog):
                     print(roles_dict[stil])
                     user = await self.guild.fetch_member(dcid)
                     print(user.display_name)
+#                   user.add_roles(self.translateRoles(roles_dict[stil], cursor_obj))
             except (KeyError) as key_error:
                 print("Error: does not exist in member database")
             
@@ -164,10 +182,76 @@ class RoleSync(commands.Cog):
         await interaction.user.remove_roles(role)
 
         await interaction.response.send_message(f"Tried giving you the test role.")
-
-
-
     
+    
+    def get_position_ids(self):
+        output = []
+        # Connect to the PostgreSQL database server
+        conn = None
+        try:
+            # read connection parameters
+            params = config()
+
+            # connect to the PostgreSQL server
+            print('Connecting to the PostgreSQL database...')
+            conn = psycopg2.connect(**params)
+            
+            # create a cursor
+            cur = conn.cursor()
+            
+            # execute a statement
+            cur.execute('''SELECT DISTINCT position_id FROM Mandates''')
+
+            temp = cur.fetchall()
+
+            for e in temp:
+                output.append(e[0])
+
+            # close the communication with the PostgreSQL
+            cur.close()
+        except (Exception, psycopg2.DatabaseError) as error:
+            print("<Error>")
+            print(type(error))
+            print(error)
+            print("</Error>")
+        finally:
+            if conn is not None:
+                conn.close()
+                print('Database connection closed.')
+        
+        return set(output)
+
+
+
+
+    # Slash command to setup role assignments
+    @app_commands.command(name="roleconfig", description="Configure the relation between roles on the website and server.")
+    async def roleConfig(self, interaction: discord.Interaction):
+        positions = self.get_position_ids()
+        view = discord.ui.View()
+
+
+        view.add_item(RoleDropdown())
+        await interaction.response.send_message("Test:",view=view)
+
+    # Slash command to sync all role assignments
+    @app_commands.command(name="syncroles", description="Configure the relation between roles on the website and server.")
+    async def syncRoles(self, interaction: discord.Interaction):
+        
+        self.syncAll()
+        
+        await interaction.response.send_message(f"Synced all roles!")
+
+class RoleDropdown(discord.ui.RoleSelect):
+    
+    def __init__(self):
+        super().__init__(placeholder="Select an option",max_values=25,min_values=1)
+
+    async def callback(self, interaction):
+        await interaction.response.send_message("test complete")
+
+
+
 
 
 # ----------------------MAIN PROGRAM----------------------
@@ -177,6 +261,3 @@ async def setup(bot: commands.Bot) -> None:
     print("\tcogs.role_sync begin loading")
     rs = RoleSync(bot)
     await bot.add_cog(rs)
-    await rs.syncAll()
-
-        

@@ -37,7 +37,7 @@ class PanternBot(commands.Bot):
         except Exception as e:
             print(f"Failed to sync commands: {e}")
         print('------')
-        await bot.load_extension('cogs.role_sync')
+        # await bot.load_extension('cogs.role_sync')
 
     async def setup_hook(self) -> None:
         # Do any data processing to get data into memory here:
@@ -45,7 +45,8 @@ class PanternBot(commands.Bot):
         # Load cogs:
         print("loading cogs:")
         extensions = [
-            'cogs.drinks_handler'
+            'cogs.drinks_handler',
+            'cogs.role_sync'
         ]
 
         for extension in extensions:

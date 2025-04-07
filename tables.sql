@@ -38,6 +38,6 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
 
 CREATE TABLE IF NOT EXISTS connected_discord_roles (
     position_id TEXT NOT NULL,
-    discord_role_id TEXT NOT NULL,
+    discord_role_table TEXT NOT NULL,
     PRIMARY KEY (position_id)
 );
