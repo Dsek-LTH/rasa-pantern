@@ -6,8 +6,11 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+import db_handler
+
 load_dotenv()
 token = environ["TOKEN"]
+db_file = environ["DB_FILE"]
 
 # -----------------------STATIC VARS----------------------
 # test guild, discord bot testing grounds
@@ -25,34 +28,40 @@ class PanternBot(commands.Bot):
             intents=intents,
             command_prefix=command_prefix,
             description="D sektionens egna bot!",
-            activity=discord.Game(
-                name="Blockbattle"))
+            activity=discord.Game(name="Blockbattle"),
+        )
 
     async def on_ready(self) -> None:
         # login, probably want to log more info here
-        print(f'Logged in as {self.user} (ID: {self.user.id})')
+        if self.user is None:
+            # Failed login
+            print("WARNING: Failed login, quitting")
+            quit()
+
+        print(f"Logged in as {self.user} (ID: {self.user.id})")
         try:
-            synced = await bot.tree.sync()
+            self.tree.copy_global_to(guild=discord.Object(752506220400607295))
+            synced = await bot.tree.sync(guild=discord.Object(752506220400607295))
             print(f"Synced {len(synced)} command(s).")
         except Exception as e:
             print(f"Failed to sync commands: {e}")
-        print('------')
+        print("------")
 
     async def setup_hook(self) -> None:
         # Do any data processing to get data into memory here:
 
         # Load cogs:
         print("loading cogs:")
-        extensions = [
-            'cogs.drinks_handler'
-        ]
+        extensions = ["cogs.drinks_handler"]
+
+        self.db = db_handler.DBHandler(db_file)
 
         for extension in extensions:
             try:
                 await bot.load_extension(extension)
                 print(f"\t{extension} loaded")
-            except Exception as e:
-                print(f'Failed to load extension {extension}.')
+            except Exception:
+                print(f"Failed to load extension {extension}.")
                 traceback.print_exc()
 
         # Sync app commands with Discord:

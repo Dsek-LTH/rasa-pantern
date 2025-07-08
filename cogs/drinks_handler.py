@@ -1,8 +1,8 @@
-import asyncio
-
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from main import PanternBot
 
 # Hardcoded list of sodas like in https://link.dsek.se/mauer
 sodas = [
@@ -20,82 +20,48 @@ sodas = [
 soda_tracker = {}
 
 
-class DrinksHandler(commands.Cog):
-
-    bot: commands.Bot
-
-    def __init__(self, bot):
-        self.bot = bot
-
-    # Slash command to show soda list
-    @app_commands.command(name="drink", description="Choose a soda to drink")
-    async def drink(self, interaction: discord.Interaction):
-        class SodaButtons(discord.ui.View):
-            def __init__(self):
-                super().__init__()
-
-                for soda in sodas:
-                    self.add_item(SodaButton(soda))
-
-                self.add_item(
-                    discord.ui.Button(
-                        label="Add Custom Soda",
-                        style=discord.ButtonStyle.secondary,
-                        custom_id="add_custom",
-                    )
+class ChoseDrinkSelector(discord.ui.Select):
+    def __init__(self, drink_list: list[str]) -> None:
+        options = []
+        for drink in drink_list:
+            options.append(discord.SelectOption(label=drink, value=drink))
+        if drink_list == []:
+            options = [
+                discord.SelectOption(
+                    label="nothing",
+                    description="There are no drinks to pick from",
+                    default=True,
                 )
+            ]
+        super().__init__(placeholder="Please select your drink", options=options)
 
-        class SodaButton(discord.ui.Button):
-            def __init__(self, soda_name: str):
-                super().__init__(label=soda_name, style=discord.ButtonStyle.primary)
-                self.soda_name = soda_name
-
-            async def callback(self, interaction: discord.Interaction):
-                user = interaction.user
-                soda_tracker[user.id] = self.soda_name
-                await interaction.response.send_message(
-                    f"{user.mention} chose **{self.soda_name}**!", ephemeral=True
-                )
-
-        # Handle the custom soda button interaction
-        async def add_custom(interaction: discord.Interaction):
-            await interaction.response.send_message(
-                f"{interaction.user.mention}, please type the name of the custom soda you'd like to add:",
-                ephemeral=True,
-            )
-
-            def check(msg):
-                return (
-                    msg.author == interaction.user
-                    and msg.channel == interaction.channel
-                )
-
-            try:
-                # Wait for a message from the user with the custom soda name
-                msg = await self.bot.wait_for("message", check=check, timeout=30)
-                custom_soda = msg.content
-                # Add the custom soda to the tracker
-                soda_tracker[interaction.user.id] = custom_soda
-                sodas.append(custom_soda)  # Optionally add it to the soda list
-                await interaction.followup.send(
-                    f"{interaction.user.mention} added **{custom_soda}** to the list and chose it!",
-                    ephemeral=True,
-                )
-            except asyncio.TimeoutError:
-                await interaction.followup.send(
-                    f"{interaction.user.mention}, you took too long to respond. Please try again.",
-                    ephemeral=True,
-                )
-
-        # Create the initial message with the clickable buttons
+    async def callback(self: discord.ui.Select, interaction: discord.Interaction):
+        # TODO: Make sure this actually creates a DB entry
         await interaction.response.send_message(
-            "Choose your drink:", view=SodaButtons()
+            f"User {interaction.user.name} chose {self.values[0]}",
+            ephemeral=True,
         )
 
-        # Override the button's callback method to add custom soda
-        for item in SodaButtons().children:
-            if item.custom_id == "add_custom":
-                item.callback = add_custom
+
+class DrinkHandler(commands.Cog):
+
+    def __init__(self, bot: PanternBot) -> None:
+        self.bot = bot
+
+    @app_commands.command(
+        name="test_drink",
+    )
+    @app_commands.guild_only()
+    async def test_drink(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild_id:
+            # INFO: If we reach this and don't have a guild id despite this
+            # command being set to guild only something is very wrong...
+            print("Command cannot find guild_id field")
+            return
+        drink_list = await self.bot.db.get_drink_list(interaction.guild_id)
+        view = discord.ui.View()
+        view.add_item(ChoseDrinkSelector(drink_list))
+        await interaction.response.send_message("Pick drink:", view=view)
 
     # Slash command to show soda counts
     @app_commands.command(name="tally", description="See the soda tally count")
@@ -114,12 +80,10 @@ class DrinksHandler(commands.Cog):
 
         # Create a tally string
         tally_list = "\n".join(
-            [f"**{soda}**: {count}" for soda,
-                count in soda_count.items() if count > 0]
+            [f"**{soda}**: {count}" for soda, count in soda_count.items() if count > 0]
         )
 
         await interaction.response.send_message(f"**Soda Tally Count:**\n{tally_list}")
-
 
     # Slash command to show detailed soda info
     @app_commands.command(name="tallymore", description="See detailed soda choices")
@@ -142,6 +106,6 @@ class DrinksHandler(commands.Cog):
 # ----------------------MAIN PROGRAM----------------------
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: PanternBot) -> None:
     print("\tcogs.drinks_handler begin loading")
-    await bot.add_cog(DrinksHandler(bot))
+    await bot.add_cog(DrinkHandler(bot))
