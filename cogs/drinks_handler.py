@@ -1,105 +1,213 @@
+from typing import Optional
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+import db_handler
+from helpers import TallyCount
 from main import PanternBot
-
-# Hardcoded list of sodas like in https://link.dsek.se/mauer
-sodas = [
-    "Cola/Fanta",
-    "Pepsi/7up/Zingo",
-    "Pepsi",
-    "Smakis",
-    "Pommac",
-    "Ramlösa",
-    "Trocadero",
-    "Loka Crush",
-]
-
-# Dictionary to track who took what soda
-soda_tracker = {}
 
 
 class ChoseDrinkSelector(discord.ui.Select):
-    def __init__(self, drink_list: list[str]) -> None:
-        options = []
+    def __init__(
+        self, drink_list: list[str], db: db_handler.DBHandler
+    ) -> None:
+        self.db: db_handler.DBHandler = db
+        options = [
+            discord.SelectOption(
+                label="nothing",
+                value="nothing",
+                default=True,
+            )
+        ]
         for drink in drink_list:
             options.append(discord.SelectOption(label=drink, value=drink))
-        if drink_list == []:
-            options = [
-                discord.SelectOption(
-                    label="nothing",
-                    description="There are no drinks to pick from",
-                    default=True,
-                )
-            ]
-        super().__init__(placeholder="Please select your drink", options=options)
+        super().__init__(
+            placeholder="Please select your drink", options=options
+        )
 
-    async def callback(self: discord.ui.Select, interaction: discord.Interaction):
-        # TODO: Make sure this actually creates a DB entry
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild_id:
+            print("Guild does not exist")
+            await interaction.response.send_message(
+                "ERROR, failed to find guild, please contact an admin"
+            )
+            return
+        if not self.view:
+            raise (
+                ReferenceError("This should actually be impossible to reach")
+            )
+        if not self.view.message:
+            print(
+                "Message does not exist in guild " + str(interaction.guild_id)
+            )
+            await interaction.response.send_message(
+                "ERROR, failed to find message, please contact an admin"
+            )
+            return
+
+        if self.values[0] == "nothing":
+            await self.db.remove_drunk_drink(
+                interaction.guild_id, self.view.message.id, interaction.user.id
+            )
+            await self.view.decrement_count()
+        else:
+            edited = await self.db.set_drunk_drink(
+                interaction.guild_id,
+                self.view.message.id,
+                interaction.user.id,
+                self.values[0],
+            )
+            if edited:
+                await self.view.increment_count()
         await interaction.response.send_message(
-            f"User {interaction.user.name} chose {self.values[0]}",
+            f"You have selected {self.values[0]}!",
             ephemeral=True,
         )
 
 
-class DrinkHandler(commands.Cog):
+class ChoseDrinkView(discord.ui.View):
+    def __init__(
+        self,
+        drink_list: list[str],
+        db: db_handler.DBHandler,
+        *,
+        timeout: Optional[float] = 180.0,
+    ) -> None:
+        self.message: discord.Message | None = None
+        self._count: int = 0
+        super().__init__(timeout=timeout)
+        self.selector = ChoseDrinkSelector(drink_list, db)
+        self.add_item(self.selector)
 
+    async def increment_count(self) -> None:
+        """
+        Increments the amount of drinks had in this poll.
+        """
+        self._count += 1
+
+    async def decrement_count(self) -> None:
+        """
+        Decrement the amount of drinks had in this poll.
+        """
+        self._count -= 1
+
+    async def on_timeout(self) -> None:
+        self.selector.disabled = True
+        # TODO: remove debug statement
+        print(self.id + " timed out")
+        if self.message:
+            await self.message.edit(
+                content="Drinks have been drunk!\n-# Total drinks: "
+                + str(self._count),
+                view=self,
+            )
+
+
+class ShowFurtherTallyView(discord.ui.View):
+    def __init__(self, tally: TallyCount):
+        self.tally = tally
+        super().__init__()
+
+    @discord.ui.button(label="More info", style=discord.ButtonStyle.gray)
+    async def further_info(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "Could not find guild, please contact an admin"
+            )
+            raise ValueError("Could not find guild")
+
+        message_string = "Here is what everyone had to drink:"
+        for drink_name in self.tally.drinks:
+            message_string += f"\n- {drink_name}:"
+            for user_id in self.tally.drinks[drink_name]:
+                user = interaction.guild.get_member(user_id)
+                if user:
+                    message_string += f"\n\t- {user.display_name}"
+                else:
+                    message_string += "\n\t- `unknown user`"
+            pass
+        await interaction.response.send_message(message_string)
+
+
+class DrinkHandler(commands.Cog):
     def __init__(self, bot: PanternBot) -> None:
         self.bot = bot
+        self.ctx_tally_drinks = app_commands.ContextMenu(
+            name="Tally",
+            callback=self.tally_drinks_callback,
+        )
+        self.bot.tree.add_command(self.ctx_tally_drinks)
 
-    @app_commands.command(
-        name="test_drink",
-    )
+    async def cog_unload(self) -> None:
+        self.bot.tree.remove_command(
+            self.ctx_tally_drinks.name, type=self.ctx_tally_drinks.type
+        )
+
+    @app_commands.command()
     @app_commands.guild_only()
-    async def test_drink(self, interaction: discord.Interaction) -> None:
+    async def drink(
+        self, interaction: discord.Interaction, timeout: int = 0
+    ) -> None:
+        """
+        Sends a tally for users to select what drink they had at an event.
+
+        Args:
+            interaction (discord.Interaction): The interaction object passed
+                                               from calling this.
+            timeout (int): Optional, the amount of seconds before
+                           the interaction will time out and disable itself.
+        """
         if not interaction.guild_id:
-            # INFO: If we reach this and don't have a guild id despite this
+            # If we reach this and don't have a guild id despite this
             # command being set to guild only something is very wrong...
-            print("Command cannot find guild_id field")
-            return
-        drink_list = await self.bot.db.get_drink_list(interaction.guild_id)
-        view = discord.ui.View()
-        view.add_item(ChoseDrinkSelector(drink_list))
+            raise ValueError("Cannot find guild id")
+
+        drink_list = await self.bot.db.get_drink_option_list(
+            interaction.guild_id
+        )
+        view = ChoseDrinkView(drink_list, self.bot.db, timeout=timeout)
+        if not (isinstance(interaction.channel, discord.abc.Messageable)):
+            # Channel is not writeable, this is not good
+            raise (ValueError("channel doesn't exist, failing"))
         await interaction.response.send_message("Pick drink:", view=view)
+        view.message = await interaction.original_response()
 
-    # Slash command to show soda counts
-    @app_commands.command(name="tally", description="See the soda tally count")
-    async def tally(self, interaction: discord.Interaction):
-        if not soda_tracker:
+    @app_commands.guild_only()
+    async def tally_drinks_callback(
+        self, interaction: discord.Interaction, message: discord.Message
+    ) -> None:
+        """
+        Tallies the amount of people who clicked a message.
+
+        Args:
+            interaction (discord.Interaction): Context to run in.
+            message (discord.Message): The drink tally message to get info for.
+        """
+        if not message.guild:
             await interaction.response.send_message(
-                "No one has taken a soda yet.", ephemeral=True
+                "Guild could not be found, please contact an admin",
+                ephemeral=True,
             )
             return
-
-        # Count the selections for each soda
-        soda_count = {soda: 0 for soda in sodas}
-        for soda in soda_tracker.values():
-            if soda in soda_count:
-                soda_count[soda] += 1
-
-        # Create a tally string
-        tally_list = "\n".join(
-            [f"**{soda}**: {count}" for soda, count in soda_count.items() if count > 0]
+        drink_tally: TallyCount = await self.bot.db.get_tally(
+            message.id, message.guild.id
         )
-
-        await interaction.response.send_message(f"**Soda Tally Count:**\n{tally_list}")
-
-    # Slash command to show detailed soda info
-    @app_commands.command(name="tallymore", description="See detailed soda choices")
-    async def tallymore(self, interaction: discord.Interaction):
-        if not soda_tracker:
-            await interaction.response.send_message(
-                "No one has taken a soda yet.", ephemeral=True
-            )
-            return
-
-        detailed_list = "\n".join(
-            [f"<@{user_id}> → **{soda}**" for user_id, soda in soda_tracker.items()]
-        )
+        if drink_tally.total_count > 0:
+            message_string = f"Total drinks drunk: {drink_tally.total_count}"
+            message_string += "\nTally:"
+            for name in drink_tally.drinks:
+                message_string += (
+                    f"\n- {name}: {len(drink_tally.drinks[name])}"
+                )
+        else:
+            message_string = "Nobody logged anything with this tally."
 
         await interaction.response.send_message(
-            f"**Detailed Soda Choices:**\n{detailed_list}"
+            message_string, view=ShowFurtherTallyView(drink_tally)
         )
 
 

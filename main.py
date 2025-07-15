@@ -40,8 +40,10 @@ class PanternBot(commands.Bot):
 
         print(f"Logged in as {self.user} (ID: {self.user.id})")
         try:
-            self.tree.copy_global_to(guild=discord.Object(752506220400607295))
-            synced = await bot.tree.sync(guild=discord.Object(752506220400607295))
+            # We might want to make a command that deals with this instead.
+            # Syncing on every startup is excessive and eats both time and
+            # our allowed api calls.
+            synced = await bot.tree.sync()
             print(f"Synced {len(synced)} command(s).")
         except Exception as e:
             print(f"Failed to sync commands: {e}")
@@ -49,13 +51,11 @@ class PanternBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         # Do any data processing to get data into memory here:
+        self.db = db_handler.DBHandler(db_file)
 
         # Load cogs:
         print("loading cogs:")
         extensions = ["cogs.drinks_handler"]
-
-        self.db = db_handler.DBHandler(db_file)
-
         for extension in extensions:
             try:
                 await bot.load_extension(extension)
