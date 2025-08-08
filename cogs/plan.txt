@@ -1,0 +1,15 @@
+table holding config options and what message changes them
+
+messageId, guildId, optionName (maybe enum??? seems hard to do. Can we extend enums like classes? in that case we could have a base enum in the db file and then extensions in the cogs.),
+cogName (enum), option value. 
+Maybe have an option type in there too?
+
+
+can hold settings for both the drinks_handler, and role_handler sort of things.
+
+drinks_handler has drink types for example where no data needs to be stored
+
+role handler could potentially do the same thing, but could also store data straight in the db... That would be wrong though, and Dag wouldn't like it...
+
+
+should probably pmly hold config messages for proper db design....

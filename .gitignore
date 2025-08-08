@@ -177,5 +177,6 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 
 testing_db.sqlite
-*.sqlite-shm
-*.sqlite-wal
+db.sqlite
+db.sqlite-shm
+db.sqlite-wal

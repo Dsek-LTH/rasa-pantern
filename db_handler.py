@@ -4,7 +4,7 @@ from typing import Any
 
 import asqlite
 
-from helpers import TallyCount
+from helpers import RoleMapping, TallyCount
 
 
 class DBHandler:
@@ -34,6 +34,27 @@ class DBHandler:
         )
         """
         await self._execute_query(create_drunk_table)
+
+        create_role_config_table = """
+        CREATE TABLE IF NOT EXISTS role_configs (
+            "id" INTEGER PRIMARY KEY NOT NULL,
+            "message_id" UNIQUE INTEGER NOT NULL,
+            "role_id" UNIQUE TEXT NOT NULL,
+            "discord_role_id" INTEGER NOT NULL
+        """
+        await self._execute_query(create_role_config_table)
+
+        create_settings_table = """
+        CREATE TABLE IF NOT EXISTS settings (
+            "id" INTEGER PRIMARY KEY NOT NULL,
+            "guild_id" INTEGER NOT NULL,
+            "cog" INTEGER NOT NULL,
+            "config_name" TEXT NOT NULL,
+            "value" TEXT NOT NULL,
+            UNIQUE(guild_id, cog, config_name)
+        )
+        """
+        await self._execute_query(create_settings_table)
 
     async def _execute_query(self, query: str, vars: tuple = ()) -> None:
         """Execute a query in the database.
@@ -109,6 +130,7 @@ class DBHandler:
                     print(f"The error '{e}' occurred")
 
     # ------------------------------------------------------
+
     # Drink system:
     async def get_drink_option_list(self, guild_id: int) -> list[str]:
         """
@@ -343,6 +365,187 @@ class DBHandler:
                 drunk_drinks[drunk["name"]].append(drunk["user_id"])
             countObj.set_drinks(drunk_drinks)
         return countObj
+
+    # ------------------------------------------------------
+    # role config system:
+    async def create_role_config(
+        self, message_id: int, role_id: str, discord_role_id: int
+    ) -> None:
+        """
+        Create a role config mapping.
+
+        Args:
+            message_id (int): Id of the message that can change this
+                            setting in discord.
+            role_id (str): The LDAP role id for this mapping.
+            discord_role_id (int): The discord role id for this mapping.
+        """
+        add_config_message_query = """
+            INSERT INTO
+                role_configs (message_id, role_id, discord_role_id)
+            VALUES
+                (?, ?, ?)
+        """
+        await self._execute_query(
+            add_config_message_query,
+            (message_id, role_id, discord_role_id),
+        )
+
+    async def update_role_config(
+        self, message_id: int, discord_role_id: int
+    ) -> None:
+        """
+        Update mapping for a role config.
+
+        Args:
+            message_id (int): message id of the config to update.
+            discord_role_id (int): new discord role to map to this LADP role.
+
+        """
+        update_role_config_query = """
+        UPDATE role_configs
+        SET
+            discord_role_id = ?
+        WHERE
+            message_id = ?
+        """
+        await self._execute_query(
+            update_role_config_query,
+            (discord_role_id, message_id),
+        )
+
+    async def remove_role_config(self, message_id: int) -> None:
+        """
+        Removes a given role mapping from the db.
+
+        Args:
+            message_id (int): The id of the role mapping to delete.
+        """
+        remove_config_message_query = """
+            DELETE FROM role_configs
+            WHERE message_id = ?
+        """
+        await self._execute_query(
+            remove_config_message_query,
+            (message_id,),
+        )
+
+    async def get_config_messages(self) -> list[RoleMapping]:
+        """
+        Gets all role mapping configs.
+
+        Returns:
+            list[RoleMapping]: A list of role mappings for the cog.
+        """
+        get_config_message_query = """
+            SELECT message_id, role_id, discord_role_id
+            FROM role_configs
+        """
+        config_messages = await self._execute_multiple_read_query(
+            get_config_message_query
+        )
+        return_list = []
+        if config_messages:
+            for message in config_messages:
+                return_list.append(
+                    RoleMapping(
+                        message["message_id"],
+                        message["role_id"],
+                        message["discord_role_id"],
+                    )
+                )
+        return return_list
+
+    # ------------------------------------------------------
+    # settings system:
+    # TODO: Consider implemeting an enum for cog,
+    # so that this can be done a bit easier, and without chance of errors...
+    async def set_setting(
+        self, guild_id: int, cog: int, setting_name: str, value: str
+    ) -> None:
+        """
+        Sets a setting to a value in a given guild and cog.
+
+        Args:
+            guild_id (int): The guild to set the setting for.
+            cog (int): The cog to set the setting for.
+            setting_name (str): The setting to set.
+            value (str): The value to set it to.
+        """
+        # TODO: Make this both insert and update
+        # BUG: ^^^
+        set_setting_query = """
+            INSERT INTO
+                settings (guild_id, cog, config_name, value)
+            VALUES
+                (?, ?, ?, ?)
+        """
+        await self._execute_query(
+            set_setting_query,
+            (guild_id, cog, setting_name, value),
+        )
+
+    async def get_setting(
+        self, guild_id: int, cog: int, setting_name: str
+    ) -> str | None:
+        """
+        Gets the value of a given setting in a given cog and guild.
+
+        Args:
+            guild_id (int): The guild to search in.
+            cog (int): The cog to get settings for.
+            setting_name (str): The setting to search for.
+
+        Returns:
+            str: The value of the setting.
+        """
+        get_setting_query = """
+            SELECT value FROM
+                settings
+            WHERE
+                guild_id = ?
+            AND
+                cog = ?
+            AND
+                config_name = ?;
+        """
+        table_field = await self._execute_read_query(
+            get_setting_query, (guild_id, cog, setting_name)
+        )
+        if not table_field:
+            return None
+        return table_field["value"]
+
+    async def get_settings(
+        self, guild_id: int, cog: int
+    ) -> dict[str, str] | None:
+        """
+        Gets all settings for the given cog and guild.
+
+        Args:
+            guild_id (int): The guild to search in.
+            cog (int): The cog to get settings for.
+
+        Returns:
+            dict[str, str]: A dict mapping setting name to value.
+        """
+        get_setting_query = """
+            SELECT config_name, value FROM
+                settings
+            WHERE
+                guild_id = ?
+            AND
+                cog = ?
+        """
+        db_return = await self._execute_multiple_read_query(
+            get_setting_query, (guild_id, cog)
+        )
+        if not db_return:
+            return None
+        return_dict = {}
+        for setting in db_return:
+            return_dict[setting["config_name"]] = setting["value"]
+        return return_dict
 
 
 if __name__ == "__main__":
