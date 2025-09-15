@@ -5,7 +5,7 @@ To run, create and source a virtural environment with
 `source venv/bin/activate`
 
 Install packages
-`pip install -r /path/to/requirements.txt`
+`pip install -r requirements.txt`
 
 Fill in example.env file and rename to .env
 

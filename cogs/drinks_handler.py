@@ -130,7 +130,7 @@ class ShowFurtherTallyView(discord.ui.View):
                 else:
                     message_string += "\n\t- `unknown user`"
             pass
-        await interaction.response.send_message(message_string)
+        await interaction.response.send_message(message_string, ephemeral=True)
 
 
 class DrinkHandler(commands.Cog):
