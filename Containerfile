@@ -1,6 +1,6 @@
 FROM python:3.13
 
-RUN mkdir -p /app/cogs
+RUN mkdir -p /app/cogs && chmod g+rw /app
 
 COPY cogs/*.py /app/cogs
 COPY requirements.txt /app
