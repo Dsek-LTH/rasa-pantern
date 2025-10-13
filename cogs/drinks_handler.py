@@ -3,9 +3,10 @@ from typing import Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.permissions import Permissions
 
 import db_handler
-from helpers import TallyCount
+from helpers import Cog, TallyCount
 from main import PanternBot
 
 
@@ -68,6 +69,9 @@ class ChoseDrinkSelector(discord.ui.Select):
 
 
 class ChoseDrinkView(discord.ui.View):
+    # TODO: Make a custom timeout value instead.
+    # The current one counts time from the last person
+    # to use it instead of from when the view was created.
     def __init__(
         self,
         drink_list: list[str],
@@ -147,6 +151,46 @@ class DrinkHandler(commands.Cog):
             self.ctx_tally_drinks.name, type=self.ctx_tally_drinks.type
         )
 
+    async def check_change_drink_perms(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        # Deprecated: We will be doing this on the discord side instead
+        # This will remain as a good example of how to check settings in the db
+        """
+        Checks if the interaction user is in the right groups
+        to make this change
+        """
+        # Check if user is in the right groups to make this change
+        # TODO: make a dict object in bot that contains setting names, cogs
+        # and descriptions. Then have a new cog that deals with changing
+        # settings for things. Have a setting field called change_drink_perms
+        # or similar. This could be a comma separated list or similar for what
+        # discord roles are allowed to change this value.
+        if not interaction.guild_id or not interaction.guild:
+            # If we reach this and don't have a guild id despite this
+            # command being set to guild only something is very wrong...
+            raise ValueError("Cannot find guild")
+        if interaction.user is not discord.Member:
+            raise ValueError("user not a guild member")
+
+        allowed_roles_raw = await self.bot.db.get_setting(
+            interaction.guild_id, Cog.DRINKS_HANDLER, "change_drink_perms"
+        )
+        if allowed_roles_raw:
+            user_roles = interaction.user.roles
+            for role_id in allowed_roles_raw.split():
+                role = interaction.guild.get_role(int(role_id))
+                if not role:
+                    print(
+                        f"Error role with id {role_id} doesn't exist\
+                        in Guild: {interaction.guild.name}"
+                    )
+                if role in user_roles:
+                    return True
+
+        return False
+
     @app_commands.command()
     @app_commands.guild_only()
     async def drink(
@@ -175,6 +219,27 @@ class DrinkHandler(commands.Cog):
             raise (ValueError("channel doesn't exist, failing"))
         await interaction.response.send_message("Pick drink:", view=view)
         view.message = await interaction.original_response()
+
+    @app_commands.command()
+    @app_commands.guild_only()
+    @app_commands.default_permissions(Permissions(administrator=True))
+    async def configure_drinks(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild_id:
+            # If we reach this and don't have a guild id despite this
+            # command being set to guild only something is very wrong...
+            raise ValueError("Cannot find guild id")
+        drink_options = await self.bot.db.get_drink_option_list(
+            interaction.guild_id
+        )
+        message_string = "These are the currently available drinks:"
+        for drink_name in drink_options:
+            message_string += f"\n\t- {drink_name}"
+        view = ConfigureDrinksView(drink_options, self.bot.db)
+        await interaction.response.send_message(message_string, view=view)
+        # TODO: Have it show a list of all current options and then have
+        # an add and delete button at the bottom. Add gives a popup
+        # where you can put in a new name, whilst remove gives you a
+        # dropdown where you can select one or multiple to remove.
 
     @app_commands.guild_only()
     async def tally_drinks_callback(

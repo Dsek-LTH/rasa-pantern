@@ -1,3 +1,7 @@
+import enum
+from enum import Enum
+
+
 class TallyCount:
     def __init__(
         self, message_id: int, drunk_drinks: dict[str, list[int]] | None = None
@@ -59,3 +63,7 @@ class RoleMapping:
         self.message_id = message_id
         self.role_id = role_id
         self.discord_role_id = discord_role_id
+
+
+class Cog(Enum):
+    DRINKS_HANDLER = 0

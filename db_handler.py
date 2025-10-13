@@ -4,7 +4,7 @@ from typing import Any
 
 import asqlite
 
-from helpers import RoleMapping, TallyCount
+from helpers import Cog, RoleMapping, TallyCount
 
 
 class DBHandler:
@@ -435,7 +435,7 @@ class DBHandler:
         Gets all role mapping configs.
 
         Returns:
-            list[RoleMapping]: A list of role mappings for the cog.
+            list[RoleMapping]: A list of role mappings.
         """
         get_config_message_query = """
             SELECT message_id, role_id, discord_role_id
@@ -461,7 +461,7 @@ class DBHandler:
     # TODO: Consider implemeting an enum for cog,
     # so that this can be done a bit easier, and without chance of errors...
     async def set_setting(
-        self, guild_id: int, cog: int, setting_name: str, value: str
+        self, guild_id: int, cog: Cog, setting_name: str, value: str
     ) -> None:
         """
         Sets a setting to a value in a given guild and cog.
@@ -486,7 +486,7 @@ class DBHandler:
         )
 
     async def get_setting(
-        self, guild_id: int, cog: int, setting_name: str
+        self, guild_id: int, cog: Cog, setting_name: str
     ) -> str | None:
         """
         Gets the value of a given setting in a given cog and guild.

@@ -1,15 +1,36 @@
 table holding config options and what message changes them
 
-messageId, guildId, optionName (maybe enum??? seems hard to do. Can we extend enums like classes? in that case we could have a base enum in the db file and then extensions in the cogs.),
-cogName (enum), option value. 
-Maybe have an option type in there too?
+messageId, guildId, optionName (maybe enum??? seems hard to do. Can we extend
+enums like classes? in that case we could have a base enum in the db file and
+then extensions in the cogs.), cogName (enum), option value. Maybe have an
+option type in there too?
 
 
 can hold settings for both the drinks_handler, and role_handler sort of things.
 
 drinks_handler has drink types for example where no data needs to be stored
 
-role handler could potentially do the same thing, but could also store data straight in the db... That would be wrong though, and Dag wouldn't like it...
+role handler could potentially do the same thing, but could also store data
+straight in the db... That would be wrong though, and Dag wouldn't like it...
 
 
-should probably pmly hold config messages for proper db design....
+should probably probably hold config messages for proper db design....
+
+
+
+when creating a new config entry it should
+1. Check if there already exists an entry for the given server
+2. If yes, send a link to that message and warn that it will be removed. Also
+show a dropdown for a new selection of channels.
+3. If no then just show a dropdown of channels to select for setting channel.
+
+
+for the drinks options, have a command to change it. Have it show a list of all
+current options and then have an add and delete button at the bottom. Add gives
+a popup where you can put in a new name, whilst remove gives you a dropdown
+where you can select one or multiple to remove.
+
+
+For the actual role sync itself we want to keep track of all unsynced roles and
+who has them. When it's time to sync we simply overwrite the user's role with
+our own custom list.
