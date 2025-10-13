@@ -5,7 +5,6 @@ from discord import app_commands
 from discord.ext import commands
 
 import db_handler
-from helpers import TallyCount
 from main import PanternBot
 
 
@@ -106,7 +105,7 @@ class ChoseDrinkView(discord.ui.View):
 
 
 class ShowFurtherTallyView(discord.ui.View):
-    def __init__(self, tally: TallyCount):
+    def __init__(self, tally: dict[str, list[int]]):
         self.tally = tally
         super().__init__()
 
@@ -120,17 +119,19 @@ class ShowFurtherTallyView(discord.ui.View):
             )
             raise ValueError("Could not find guild")
 
-        message_string = "Here is what everyone had to drink:"
-        for drink_name in self.tally.drinks:
-            message_string += f"\n- {drink_name}:"
-            for user_id in self.tally.drinks[drink_name]:
+        message = ["Here is what everyone had to drink:", "```"]
+        for drink_name in self.tally:
+            message.append(drink_name + ":")
+            for user_id in self.tally[drink_name]:
                 user = interaction.guild.get_member(user_id)
                 if user:
-                    message_string += f"\n\t- {user.display_name}"
+                    message.append(f"    - {user.display_name} ({user.id})")
                 else:
-                    message_string += "\n\t- `unknown user`"
-            pass
-        await interaction.response.send_message(message_string, ephemeral=True)
+                    message.append(f"    - unknown ({user_id})")
+
+        message.append("```")
+
+        await interaction.response.send_message("\n".join(message), ephemeral=True)
 
 
 class DrinkHandler(commands.Cog):
@@ -193,21 +194,25 @@ class DrinkHandler(commands.Cog):
                 ephemeral=True,
             )
             return
-        drink_tally: TallyCount = await self.bot.db.get_tally(
+
+        drink_tally = await self.bot.db.get_tally(
             message.id, message.guild.id
         )
-        if drink_tally.total_count > 0:
-            message_string = f"Total drinks drunk: {drink_tally.total_count}"
-            message_string += "\nTally:"
-            for name in drink_tally.drinks:
-                message_string += (
-                    f"\n- {name}: {len(drink_tally.drinks[name])}"
-                )
-        else:
-            message_string = "Nobody logged anything with this tally."
 
+        drink_count = 0
+        content = ["```"]
+        for drink in drink_tally:
+            drink_count += len(drink_tally[drink])
+            content.append(f"{drink}: {len(drink_tally[drink])}")
+
+        content.insert(0, f"Total drinks drunk: {drink_count}")
+        if drink_count == 0:
+            content = ["Nobody logged anything with this tally."]
+        else:
+            content.append("```")
+ 
         await interaction.response.send_message(
-            message_string, view=ShowFurtherTallyView(drink_tally)
+            "\n".join(content), view=ShowFurtherTallyView(drink_tally)
         )
 
 
