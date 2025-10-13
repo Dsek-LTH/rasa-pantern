@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import traceback
 from os import environ
+from typing import override
 
 import discord
 from discord.ext import commands
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 
 import db_handler
 
-load_dotenv()
+_ = load_dotenv()
 token = environ["TOKEN"]
 db_file = environ["DB_FILE"]
 
@@ -24,6 +25,8 @@ class PanternBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+
+        self.db: db_handler.DBHandler = db_handler.DBHandler(db_file)
         super().__init__(
             intents=intents,
             command_prefix=command_prefix,
@@ -49,9 +52,9 @@ class PanternBot(commands.Bot):
             print(f"Failed to sync commands: {e}")
         print("------")
 
+    @override
     async def setup_hook(self) -> None:
         # Do any data processing to get data into memory here:
-        self.db = db_handler.DBHandler(db_file)
 
         # Load cogs:
         print("loading cogs:")

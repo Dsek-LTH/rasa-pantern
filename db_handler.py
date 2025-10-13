@@ -4,7 +4,7 @@ from typing import Any
 
 import asqlite
 
-from helpers import Cog, RoleMapping, TallyCount
+from helpers import Cog, RoleMapping
 
 
 class DBHandler:
@@ -335,15 +335,19 @@ class DBHandler:
             ),
         )
 
-    async def get_tally(self, message_id: int, guild_id: int) -> TallyCount:
+    async def get_tally(
+        self, message_id: int, guild_id: int
+    ) -> dict[str, list[int]]:
         """
         Gets drink tally information from a message.
+
         Args:
             message_id (int): The message id of the tally to find data from.
             guild_id (int): The guild id of the tally to find data from.
 
         Returns:
-            TallyCount: An object holding the information on the tally.
+            dict[str, list[int]]: A dict mapping the name of drinks to all
+            users who selected that drink
         """
         get_drinks_query = """
             SELECT user_id, name
@@ -353,18 +357,13 @@ class DBHandler:
         drunk_list = await self._execute_multiple_read_query(
             get_drinks_query, (message_id,)
         )
-        countObj = TallyCount(message_id)
+
+        res = {}
         if drunk_list:
-            guild_drink_options = await self.get_drink_option_list(guild_id)
-            # Init a dict of empty lists for every drink option in the guild
-            drunk_drinks: dict[str, list[int]] = dict(
-                (key, []) for key in guild_drink_options
-            )
             for drunk in drunk_list:
-                # key can be "user_id" or "name"
-                drunk_drinks[drunk["name"]].append(drunk["user_id"])
-            countObj.set_drinks(drunk_drinks)
-        return countObj
+                res.setdefault(drunk["name"], []).append(drunk["user_id"])
+
+        return res
 
     # ------------------------------------------------------
     # role config system:
