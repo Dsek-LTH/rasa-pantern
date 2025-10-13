@@ -131,7 +131,9 @@ class ShowFurtherTallyView(discord.ui.View):
 
         message.append("```")
 
-        await interaction.response.send_message("\n".join(message), ephemeral=True)
+        await interaction.response.send_message(
+            "\n".join(message), ephemeral=True
+        )
 
 
 class DrinkHandler(commands.Cog):
@@ -174,7 +176,7 @@ class DrinkHandler(commands.Cog):
         if not (isinstance(interaction.channel, discord.abc.Messageable)):
             # Channel is not writeable, this is not good
             raise (ValueError("channel doesn't exist, failing"))
-        await interaction.response.send_message("Pick drink:", view=view)
+        await interaction.response.send_message("Pick a drink:", view=view)
         view.message = await interaction.original_response()
 
     @app_commands.guild_only()
@@ -195,9 +197,7 @@ class DrinkHandler(commands.Cog):
             )
             return
 
-        drink_tally = await self.bot.db.get_tally(
-            message.id, message.guild.id
-        )
+        drink_tally = await self.bot.db.get_tally(message.id, message.guild.id)
 
         drink_count = 0
         content = ["```"]
@@ -210,7 +210,7 @@ class DrinkHandler(commands.Cog):
             content = ["Nobody logged anything with this tally."]
         else:
             content.append("```")
- 
+
         await interaction.response.send_message(
             "\n".join(content), view=ShowFurtherTallyView(drink_tally)
         )

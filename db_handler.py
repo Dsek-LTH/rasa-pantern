@@ -311,7 +311,9 @@ class DBHandler:
             ),
         )
 
-    async def get_tally(self, message_id: int, guild_id: int) -> dict[str, list[int]]:
+    async def get_tally(
+        self, message_id: int, guild_id: int
+    ) -> dict[str, list[int]]:
         """
         Gets drink tally information from a message.
 
@@ -320,7 +322,8 @@ class DBHandler:
             guild_id (int): The guild id of the tally to find data from.
 
         Returns:
-            dict[str, list[int]]
+            dict[str, list[int]]: A dict mapping the name of drinks to all
+            users who selected that drink
         """
         get_drinks_query = """
             SELECT user_id, name
