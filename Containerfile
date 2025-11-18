@@ -1,6 +1,6 @@
-FROM python:3.13
+FROM python:3.13-alpine
 
-RUN mkdir -p /app/cogs && chmod g+rw /app
+RUN mkdir -p /app/cogs && chmod g+rw /app && apk add --no-cache sqlite=3.49.2-r1 && pip install --no-cache-dir --upgrade pip==25.3
 
 # Kubernetes (and by extension OKD) won't read python standardout if python's
 # buffer is allowed to do stuff. Here we turn it off
@@ -16,6 +16,6 @@ COPY cogs/*.py /app/cogs
 COPY requirements.txt /app
 COPY *.py /app
 
-RUN pip --no-cache-dir install --requirement /app/requirements.txt && python db_handler.py
+RUN pip --no-cache-dir install --requirement /app/requirements.txt
 
-CMD [ "python", "/app/main.py"]
+CMD [ "python", "-OO /app/main.py"]
