@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 import db_handler
 
 _ = load_dotenv()
-token = environ["TOKEN"]
-db_file = environ["DB_FILE"]
+token = environ["token"]
+db_file = environ["db_file"]
 
 # -----------------------STATIC VARS----------------------
 # test guild, discord bot testing grounds

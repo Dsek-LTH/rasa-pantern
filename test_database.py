@@ -4,7 +4,7 @@ from db_handler import DBHandler
 
 if __name__ == "__main__":
     db = DBHandler("testing_db.sqlite")
-    asyncio.run(db._create_tables())
+    asyncio.run(db.create_tables())
     if not asyncio.run(db.get_drink_option_list(-1)) == []:
         print("drink list not empty testing might be fucked")
 
