@@ -1,9 +1,8 @@
-import asyncio
 import typing
 from typing import final, override
 
 import discord
-from discord import app_commands
+from discord import app_commands, guild
 from discord.ext import commands
 from discord.permissions import Permissions
 
@@ -13,23 +12,33 @@ from main import PanternBot
 
 
 class ChooseDrinkView(discord.ui.View):
-    # TODO: Make a custom timeout value instead.
-    # The current one counts time from the last person
-    # to use it instead of from when the view was created.
+    # TODO: Make a custom timeout value.
     def __init__(
         self,
         message_id: int,
         guild_id: int,
+        drink_list: list[str],
         db: db_handler.DBHandler,
     ) -> None:
-        # Having this field is kind of ugly now that we keep the message_id, but I can't be arsed to fix it rn.
+        # Having this field is kind of ugly now that we keep the message_id,
+        # but I can't be arsed to fix it rn.
         self.message: discord.Message | None = None
+        self.message_id: int = message_id
+        self.db: db_handler.DBHandler = db
         self._count: int = 0
-        super().__init__()
-        self.selector: ChooseDrinkSelector = ChooseDrinkSelector(
-            message_id, guild_id, db
+        super().__init__(timeout=None)
+        selector: ChooseDrinkSelector = ChooseDrinkSelector(
+            message_id, guild_id, drink_list, db
         )
-        _ = self.add_item(self.selector)
+        self.selector: ChooseDrinkSelector = selector
+        _ = self.add_item(selector)
+
+    @classmethod
+    async def create(
+        cls, message_id: int, guild_id: int, db: db_handler.DBHandler
+    ):
+        drink_list = await db.get_drink_option_list(guild_id)
+        return ChooseDrinkView(message_id, guild_id, drink_list, db)
 
     async def increment_count(self) -> None:
         """
@@ -43,8 +52,7 @@ class ChooseDrinkView(discord.ui.View):
         """
         self._count -= 1
 
-    @override
-    async def on_timeout(self) -> None:
+    async def remove(self) -> None:
         self.selector.disabled = True
         # TODO: remove debug statement
         print(self.id + " timed out")
@@ -54,11 +62,16 @@ class ChooseDrinkView(discord.ui.View):
                 + str(self._count),
                 view=self,
             )
+        await self.db.remove_tally(self.message_id)
 
 
 class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
     def __init__(
-        self, message_id: int, guild_id: int, db: db_handler.DBHandler
+        self,
+        message_id: int,
+        guild_id: int,
+        drink_list: list[str],
+        db: db_handler.DBHandler,
     ) -> None:
         self.db: db_handler.DBHandler = db
         options = [
@@ -68,8 +81,6 @@ class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
                 default=True,
             )
         ]
-        future = db.get_drink_option_list(guild_id)
-        drink_list = asyncio.get_event_loop().run_until_complete(future)
 
         for drink in drink_list:
             options.append(discord.SelectOption(label=drink, value=drink))
@@ -220,8 +231,6 @@ class DrinkHandler(commands.Cog):
         Args:
             interaction (discord.Interaction): The interaction object passed
                                                from calling this.
-            timeout (int): Optional, the amount of seconds before
-                           the interaction will time out and disable itself.
         """
         if not interaction.guild_id:
             # If we reach this and don't have a guild id despite this
@@ -233,9 +242,14 @@ class DrinkHandler(commands.Cog):
             raise (ValueError("channel doesn't exist, failing"))
         _ = await interaction.response.send_message("Pick a drink:")
         message = await interaction.original_response()
-        view = ChooseDrinkView(message.id, interaction.guild_id, self.bot.db)
+        view = await ChooseDrinkView.create(
+            message.id, interaction.guild_id, self.bot.db
+        )
         updated_message = await message.edit(view=view)
         view.message = updated_message
+        await self.bot.db.create_tally(
+            updated_message.id, interaction.guild_id
+        )
 
     # @app_commands.command()
     # @app_commands.guild_only()
@@ -304,7 +318,9 @@ async def setup(bot: PanternBot) -> None:
     tallies = await bot.db.get_all_tallies()
     for message_id, guild_id in tallies:
         print(f"\t\t\tloading tally in message: {message_id}")
-        bot.add_view(ChooseDrinkView(message_id, guild_id, bot.db))
+        bot.add_view(
+            await ChooseDrinkView.create(message_id, guild_id, bot.db)
+        )
     if not tallies:
         print("\t\t\tNo tallies in db!")
     await bot.add_cog(DrinkHandler(bot))

@@ -16,6 +16,6 @@ COPY cogs/*.py /app/cogs
 COPY requirements.txt /app
 COPY *.py /app
 
-RUN pip --no-cache-dir install --requirement /app/requirements.txt
+RUN pip --no-cache-dir install --requirement /app/requirements.txt && python db_handler.py
 
 CMD [ "python", "/app/main.py"]

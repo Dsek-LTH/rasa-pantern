@@ -23,6 +23,7 @@ class DBHandler:
         );
         """
         await self._execute_query(create_drinks_table)
+        print("created drinks table")
 
         create_drunk_table = """
         CREATE TABLE IF NOT EXISTS drunk_drinks (
@@ -32,18 +33,31 @@ class DBHandler:
             "user_id" INTEGER NOT NULL,
             "name" TEXT NOT NULL,
             UNIQUE(guild_id, message_id, user_id)
-        )
+        );
         """
         await self._execute_query(create_drunk_table)
+        print("created drunk_table")
+
+        create_tallies_table = """
+        CREATE TABLE IF NOT EXISTS tallies (
+            "id" INTEGER PRIMARY KEY NOT NULL,
+            "guild_id" INTEGER NOT NULL,
+            "message_id" INTEGER UNIQUE  NOT NULL
+        );
+        """
+        await self._execute_query(create_tallies_table)
+        print("created tallies table")
 
         create_role_config_table = """
         CREATE TABLE IF NOT EXISTS role_configs (
             "id" INTEGER PRIMARY KEY NOT NULL,
-            "message_id" UNIQUE INTEGER NOT NULL,
-            "role_id" UNIQUE TEXT NOT NULL,
+            "message_id" INTEGER UNIQUE NOT NULL,
+            "role_id" TEXT UNIQUE NOT NULL,
             "discord_role_id" INTEGER NOT NULL
+        );
         """
         await self._execute_query(create_role_config_table)
+        print("created role config table")
 
         create_settings_table = """
         CREATE TABLE IF NOT EXISTS settings (
@@ -53,12 +67,13 @@ class DBHandler:
             "config_name" TEXT NOT NULL,
             "value" TEXT NOT NULL,
             UNIQUE(guild_id, cog, config_name)
-        )
+        );
         """
         await self._execute_query(create_settings_table)
+        print("created settings table")
 
     async def _execute_query(
-        self, query: str, vars: tuple[str | int | Cog, ...] = ()
+        self, query: str, vars: tuple[str | int, ...] = ()
     ) -> None:
         """Execute a query in the database.
 
@@ -75,8 +90,8 @@ class DBHandler:
                     print(f"the error {e} occured")
 
     async def _execute_read_query(
-        self, query: str, vars: tuple[str | int | Cog, ...] = ()
-    ) -> dict[str, str | int | Cog] | None:
+        self, query: str, vars: tuple[str | int, ...] = ()
+    ) -> dict[str, str | int] | None:
         """Execute a query in the database and parses the first found entry
         into a dictionary.
 
@@ -103,8 +118,8 @@ class DBHandler:
                     print(f"The error '{e}' occurred")
 
     async def _execute_multiple_read_query(
-        self, query: str, vars: tuple[str | int | Cog, ...] = ()
-    ) -> list[dict[str, str | int | Cog]] | None:
+        self, query: str, vars: tuple[str | int, ...] = ()
+    ) -> list[dict[str, str | int]] | None:
         """Execute a query in the database and parses all found entries into
         a list of dictionaries.
 
@@ -364,7 +379,9 @@ class DBHandler:
         res: dict[str, list[int]] = {}
         if drunk_list:
             for drunk in drunk_list:
-                if drunk["name"] is not int or drunk["user_id"] is not int:
+                if not isinstance(drunk["name"], str) or not isinstance(
+                    drunk["user_id"], int
+                ):
                     return res
                 res.setdefault(drunk["name"], []).append(drunk["user_id"])
 
@@ -387,11 +404,14 @@ class DBHandler:
         res: list[tuple[int, int]] = []
         if tallies:
             for tally in tallies:
-                if (
-                    tally["message_id"] is not int
-                    or tally["guild_id"] is not int
+                if not isinstance(tally["message_id"], int) or not isinstance(
+                    tally["guild_id"], int
                 ):
-                    return res
+                    print(
+                        "unexpected values in tallies table, "
+                        + "attempting to continue without it"
+                    )
+                    continue
                 res.append((tally["message_id"], tally["guild_id"]))
         return res
 
@@ -410,20 +430,20 @@ class DBHandler:
         """
         await self._execute_query(create_tally_query, (message_id, guild_id))
 
-    async def delete_tally(self, message_id: int):
+    async def remove_tally(self, message_id: int):
         """
-        Deletes a tally from the database (for example when it's completed).
+        Removes a tally from the database (for example when it's completed).
 
         Args:
             message_id (int): The message_id for the tally.
         """
-        delete_tally_query = """
+        remove_tally_query = """
             DELETE FROM tallies
             WHERE guild_id = ?
             AND
                 message_id = ?
         """
-        await self._execute_query(delete_tally_query, (message_id,))
+        await self._execute_query(remove_tally_query, (message_id,))
 
     # ------------------------------------------------------
     # role config system:
@@ -507,9 +527,9 @@ class DBHandler:
         if config_messages:
             for message in config_messages:
                 if (
-                    message["message_id"] is not int
-                    or message["role_id"] is not int
-                    or message["discord_role_id"] is not int
+                    not isinstance(message["message_id"], int)
+                    or not isinstance(message["role_id"], str)
+                    or not isinstance(message["discord_role_id"], int)
                 ):
                     return return_list
                 return_list.append(
