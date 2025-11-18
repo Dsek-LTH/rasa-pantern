@@ -18,4 +18,4 @@ COPY *.py /app
 
 RUN pip --no-cache-dir install --requirement /app/requirements.txt
 
-CMD [ "python", "-OO /app/main.py"]
+CMD [ "python", "-OO", "/app/main.py"]
