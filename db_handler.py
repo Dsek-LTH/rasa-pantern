@@ -1,17 +1,18 @@
 import asyncio
 from sqlite3 import Error
-from typing import Any
+from typing import final
 
 import asqlite
 
 from helpers import Cog, RoleMapping
 
 
+@final
 class DBHandler:
-    def __init__(self, db_file) -> None:
+    def __init__(self, db_file: str) -> None:
         self.db_file = db_file
 
-    async def _create_tables(self) -> None:
+    async def create_tables(self) -> None:
         """Initialize database if it doesn't exist"""
         create_drinks_table = """
         CREATE TABLE IF NOT EXISTS drink_options (
@@ -56,7 +57,9 @@ class DBHandler:
         """
         await self._execute_query(create_settings_table)
 
-    async def _execute_query(self, query: str, vars: tuple = ()) -> None:
+    async def _execute_query(
+        self, query: str, vars: tuple[str | int | Cog, ...] = ()
+    ) -> None:
         """Execute a query in the database.
 
         Args:
@@ -66,14 +69,14 @@ class DBHandler:
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:
-                    await cursor.execute(query, vars)
+                    _ = await cursor.execute(query, vars)
                     await conn.commit()
                 except Error as e:
                     print(f"the error {e} occured")
 
     async def _execute_read_query(
-        self, query: str, vars: tuple = ()
-    ) -> dict[str, Any] | None:
+        self, query: str, vars: tuple[str | int | Cog, ...] = ()
+    ) -> dict[str, str | int | Cog] | None:
         """Execute a query in the database and parses the first found entry
         into a dictionary.
 
@@ -88,7 +91,7 @@ class DBHandler:
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:
-                    await cursor.execute(query, vars)
+                    _ = await cursor.execute(query, vars)
                     result = await cursor.fetchone()
                     if not result:
                         return None
@@ -100,8 +103,8 @@ class DBHandler:
                     print(f"The error '{e}' occurred")
 
     async def _execute_multiple_read_query(
-        self, query: str, vars: tuple = ()
-    ) -> list[dict[str, Any]] | None:
+        self, query: str, vars: tuple[str | int | Cog, ...] = ()
+    ) -> list[dict[str, str | int | Cog]] | None:
         """Execute a query in the database and parses all found entries into
         a list of dictionaries.
 
@@ -115,7 +118,7 @@ class DBHandler:
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:
-                    await cursor.execute(query, vars)
+                    _ = await cursor.execute(query, vars)
                     result = await cursor.fetchall()
                     if not result:
                         return None
@@ -154,10 +157,10 @@ class DBHandler:
         )
         # TODO: error handling here if no drinks exist in system?
         # or do we let that fall upwards?
-        drink_list = []
+        drink_list: list[str] = []
         if drinks:
             for drink in drinks:
-                drink_list.append(drink.__getitem__("name"))
+                drink_list.append(str(drink.__getitem__("name")))
         return drink_list
 
     async def add_drink_option(self, guild_id: int, drink_name: str) -> None:
@@ -336,7 +339,7 @@ class DBHandler:
         )
 
     async def get_tally(
-        self, message_id: int, guild_id: int
+        self, message_id: int, _guild_id: int
     ) -> dict[str, list[int]]:
         """
         Gets drink tally information from a message.
@@ -358,12 +361,69 @@ class DBHandler:
             get_drinks_query, (message_id,)
         )
 
-        res = {}
+        res: dict[str, list[int]] = {}
         if drunk_list:
             for drunk in drunk_list:
+                if drunk["name"] is not int or drunk["user_id"] is not int:
+                    return res
                 res.setdefault(drunk["name"], []).append(drunk["user_id"])
 
         return res
+
+    async def get_all_tallies(self) -> list[tuple[int, int]]:
+        """
+        Returns a list of all tallies in the database.
+
+        Returns:
+            list[tuple[int, int]]: Contains (message_id, guild_id).
+        """
+        get_tally_query = """
+            SELECT message_id, guild_id
+            FROM tallies;
+        """
+        tallies = await self._execute_multiple_read_query(
+            get_tally_query,
+        )
+        res: list[tuple[int, int]] = []
+        if tallies:
+            for tally in tallies:
+                if (
+                    tally["message_id"] is not int
+                    or tally["guild_id"] is not int
+                ):
+                    return res
+                res.append((tally["message_id"], tally["guild_id"]))
+        return res
+
+    async def create_tally(self, message_id: int, guild_id: int):
+        """
+        Creates a tally in the database
+
+        Args:
+            message_id (int): The message id of the tally.
+            guild_id (int): The guild id of the tally.
+        """
+        create_tally_query = """
+            INSERT INTO tallies
+                (message_id, guild_id)
+            VALUES (?, ?);
+        """
+        await self._execute_query(create_tally_query, (message_id, guild_id))
+
+    async def delete_tally(self, message_id: int):
+        """
+        Deletes a tally from the database (for example when it's completed).
+
+        Args:
+            message_id (int): The message_id for the tally.
+        """
+        delete_tally_query = """
+            DELETE FROM tallies
+            WHERE guild_id = ?
+            AND
+                message_id = ?
+        """
+        await self._execute_query(delete_tally_query, (message_id,))
 
     # ------------------------------------------------------
     # role config system:
@@ -443,9 +503,15 @@ class DBHandler:
         config_messages = await self._execute_multiple_read_query(
             get_config_message_query
         )
-        return_list = []
+        return_list: list[RoleMapping] = []
         if config_messages:
             for message in config_messages:
+                if (
+                    message["message_id"] is not int
+                    or message["role_id"] is not int
+                    or message["discord_role_id"] is not int
+                ):
+                    return return_list
                 return_list.append(
                     RoleMapping(
                         message["message_id"],
@@ -481,7 +547,7 @@ class DBHandler:
         """
         await self._execute_query(
             set_setting_query,
-            (guild_id, cog, setting_name, value),
+            (guild_id, cog.value, setting_name, value),
         )
 
     async def get_setting(
@@ -509,21 +575,21 @@ class DBHandler:
                 config_name = ?;
         """
         table_field = await self._execute_read_query(
-            get_setting_query, (guild_id, cog, setting_name)
+            get_setting_query, (guild_id, cog.value, setting_name)
         )
         if not table_field:
             return None
-        return table_field["value"]
+        return str(table_field["value"])
 
     async def get_settings(
-        self, guild_id: int, cog: int
+        self, guild_id: int, cog: Cog
     ) -> dict[str, str] | None:
         """
         Gets all settings for the given cog and guild.
 
         Args:
             guild_id (int): The guild to search in.
-            cog (int): The cog to get settings for.
+            cog (Cog): The cog to get settings for.
 
         Returns:
             dict[str, str]: A dict mapping setting name to value.
@@ -541,9 +607,9 @@ class DBHandler:
         )
         if not db_return:
             return None
-        return_dict = {}
+        return_dict: dict[str, str] = {}
         for setting in db_return:
-            return_dict[setting["config_name"]] = setting["value"]
+            return_dict[str(setting["config_name"])] = str(setting["value"])
         return return_dict
 
 
@@ -554,8 +620,8 @@ if __name__ == "__main__":
 
     from dotenv import load_dotenv
 
-    load_dotenv()
+    _ = load_dotenv()
     db_file = environ["DB_FILE"]
 
     dbHandler = DBHandler(db_file)
-    asyncio.run(dbHandler._create_tables())
+    asyncio.run(dbHandler.create_tables())

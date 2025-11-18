@@ -1,3 +1,4 @@
+import asyncio
 import typing
 from typing import final, override
 
@@ -17,16 +18,16 @@ class ChooseDrinkView(discord.ui.View):
     # to use it instead of from when the view was created.
     def __init__(
         self,
-        drink_list: list[str],
+        message_id: int,
+        guild_id: int,
         db: db_handler.DBHandler,
-        *,
-        timeout: float | None = 180.0,
     ) -> None:
+        # Having this field is kind of ugly now that we keep the message_id, but I can't be arsed to fix it rn.
         self.message: discord.Message | None = None
         self._count: int = 0
-        super().__init__(timeout=timeout)
+        super().__init__()
         self.selector: ChooseDrinkSelector = ChooseDrinkSelector(
-            drink_list, db
+            message_id, guild_id, db
         )
         _ = self.add_item(self.selector)
 
@@ -57,7 +58,7 @@ class ChooseDrinkView(discord.ui.View):
 
 class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
     def __init__(
-        self, drink_list: list[str], db: db_handler.DBHandler
+        self, message_id: int, guild_id: int, db: db_handler.DBHandler
     ) -> None:
         self.db: db_handler.DBHandler = db
         options = [
@@ -67,10 +68,15 @@ class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
                 default=True,
             )
         ]
+        future = db.get_drink_option_list(guild_id)
+        drink_list = asyncio.get_event_loop().run_until_complete(future)
+
         for drink in drink_list:
             options.append(discord.SelectOption(label=drink, value=drink))
         super().__init__(
-            placeholder="Please select your drink", options=options
+            placeholder="Please select your drink",
+            options=options,
+            custom_id=f"tally-{message_id}-{guild_id}",
         )
 
     @override
@@ -207,9 +213,7 @@ class DrinkHandler(commands.Cog):
 
     @app_commands.command()
     @app_commands.guild_only()
-    async def drink(
-        self, interaction: discord.Interaction, timeout: int = 0
-    ) -> None:
+    async def drink(self, interaction: discord.Interaction) -> None:
         """
         Sends a tally for users to select what drink they had at an event.
 
@@ -224,36 +228,35 @@ class DrinkHandler(commands.Cog):
             # command being set to guild only something is very wrong...
             raise ValueError("Cannot find guild id")
 
-        drink_list = await self.bot.db.get_drink_option_list(
-            interaction.guild_id
-        )
-        view = ChooseDrinkView(drink_list, self.bot.db, timeout=timeout)
         if not (isinstance(interaction.channel, discord.abc.Messageable)):
             # Channel is not writeable, this is not good
             raise (ValueError("channel doesn't exist, failing"))
-        _ = await interaction.response.send_message("Pick a drink:", view=view)
-        view.message = await interaction.original_response()
+        _ = await interaction.response.send_message("Pick a drink:")
+        message = await interaction.original_response()
+        view = ChooseDrinkView(message.id, interaction.guild_id, self.bot.db)
+        updated_message = await message.edit(view=view)
+        view.message = updated_message
 
-    @app_commands.command()
-    @app_commands.guild_only()
-    @app_commands.default_permissions(Permissions(administrator=True))
-    async def configure_drinks(self, interaction: discord.Interaction) -> None:
-        if not interaction.guild_id:
-            # If we reach this and don't have a guild id despite this
-            # command being set to guild only something is very wrong...
-            raise ValueError("Cannot find guild id")
-        drink_options = await self.bot.db.get_drink_option_list(
-            interaction.guild_id
-        )
-        message_string = "These are the currently available drinks:"
-        for drink_name in drink_options:
-            message_string += f"\n\t- {drink_name}"
-        view = ConfigureDrinksView(drink_options, self.bot.db)
-        _ = await interaction.response.send_message(message_string, view=view)
-        # TODO: Have it show a list of all current options and then have
-        # an add and delete button at the bottom. Add gives a popup
-        # where you can put in a new name, whilst remove gives you a
-        # dropdown where you can select one or multiple to remove.
+    # @app_commands.command()
+    # @app_commands.guild_only()
+    # @app_commands.default_permissions(Permissions(administrator=True))
+    # async def configure_drinks(self, interaction: discord.Interaction) -> None:
+    #     if not interaction.guild_id:
+    #         # If we reach this and don't have a guild id despite this
+    #         # command being set to guild only something is very wrong...
+    #         raise ValueError("Cannot find guild id")
+    #     drink_options = await self.bot.db.get_drink_option_list(
+    #         interaction.guild_id
+    #     )
+    #     message_string = "These are the currently available drinks:"
+    #     for drink_name in drink_options:
+    #         message_string += f"\n\t- {drink_name}"
+    #     view = ConfigureDrinksView(drink_options, self.bot.db)
+    #     _ = await interaction.response.send_message(message_string, view=view)
+    #     # TODO: Have it show a list of all current options and then have
+    #     # an add and delete button at the bottom. Add gives a popup
+    #     # where you can put in a new name, whilst remove gives you a
+    #     # dropdown where you can select one or multiple to remove.
 
     @app_commands.guild_only()
     async def tally_drinks_callback(
@@ -297,4 +300,11 @@ class DrinkHandler(commands.Cog):
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
     print("\tcogs.drinks_handler begin loading")
+    print("\t\tloading tallies from database:")
+    tallies = await bot.db.get_all_tallies()
+    for message_id, guild_id in tallies:
+        print(f"\t\t\tloading tally in message: {message_id}")
+        bot.add_view(ChooseDrinkView(message_id, guild_id, bot.db))
+    if not tallies:
+        print("\t\t\tNo tallies in db!")
     await bot.add_cog(DrinkHandler(bot))
