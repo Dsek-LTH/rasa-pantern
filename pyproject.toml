@@ -1,0 +1,11 @@
+[project]
+name = "rasa-pantern"
+version = "0.1.0"
+description = "A discord bot for the D-guild at TLTH"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "asqlite>=2.0.0",
+    "discord-py>=2.6.4",
+    "python-dotenv>=1.2.1",
+]
