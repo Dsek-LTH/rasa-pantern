@@ -4,7 +4,7 @@ from typing import final
 
 import asqlite
 
-from helpers import Cog, RoleMapping
+from helpers import RoleMapping, SettingsCog
 
 
 @final
@@ -543,17 +543,15 @@ class DBHandler:
 
     # ------------------------------------------------------
     # settings system:
-    # TODO: Consider implemeting an enum for cog,
-    # so that this can be done a bit easier, and without chance of errors...
     async def set_setting(
-        self, guild_id: int, cog: Cog, setting_name: str, value: str
+        self, guild_id: int, cog: SettingsCog, setting_name: str, value: str
     ) -> None:
         """
         Sets a setting to a value in a given guild and cog.
 
         Args:
             guild_id (int): The guild to set the setting for.
-            cog (int): The cog to set the setting for.
+            cog (SettingsCog): The cog to set the setting for.
             setting_name (str): The setting to set.
             value (str): The value to set it to.
         """
@@ -571,14 +569,14 @@ class DBHandler:
         )
 
     async def get_setting(
-        self, guild_id: int, cog: Cog, setting_name: str
+        self, guild_id: int, cog: SettingsCog, setting_name: str
     ) -> str | None:
         """
         Gets the value of a given setting in a given cog and guild.
 
         Args:
             guild_id (int): The guild to search in.
-            cog (int): The cog to get settings for.
+            cog (SettingsCog): The cog to get settings for.
             setting_name (str): The setting to search for.
 
         Returns:
@@ -602,14 +600,14 @@ class DBHandler:
         return str(table_field["value"])
 
     async def get_settings(
-        self, guild_id: int, cog: Cog
+        self, guild_id: int, cog: SettingsCog
     ) -> dict[str, str] | None:
         """
         Gets all settings for the given cog and guild.
 
         Args:
             guild_id (int): The guild to search in.
-            cog (Cog): The cog to get settings for.
+            cog (SettingsCog): The cog to get settings for.
 
         Returns:
             dict[str, str]: A dict mapping setting name to value.
@@ -623,7 +621,7 @@ class DBHandler:
                 cog = ?
         """
         db_return = await self._execute_multiple_read_query(
-            get_setting_query, (guild_id, cog)
+            get_setting_query, (guild_id, cog.value)
         )
         if not db_return:
             return None

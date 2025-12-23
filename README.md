@@ -17,10 +17,11 @@ Managed by UV
 
 ## Running with podman/docker
 
-1. Set up database like in standalone:
+1. Set up database to be volume mounted:
 
     ```sh
-    export DB_FILE=./db.sqlite
+    mkdir ./db
+    export DB_FILE=./db/db.sqlite
     uv run db_handler.py
     ```
 

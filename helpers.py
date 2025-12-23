@@ -12,5 +12,5 @@ class RoleMapping:
         self.discord_role_id = discord_role_id
 
 
-class Cog(Enum):
+class SettingsCog(Enum):
     DRINKS_HANDLER = 0
