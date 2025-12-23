@@ -35,7 +35,7 @@ RUN uv sync --locked --no-install-project --no-dev
 
 COPY --chown=appuser:appuser ./*.py ./
 COPY --chown=appuser:appuser ./cogs/*.py ./cogs/
-RUN uv sync --locked --no-editable --no-dev 
+RUN uv sync --locked --no-editable --no-dev && chown -R appuser:appuser /home/appuser/.cache/uv
 
 CMD [ "uv", "run", "/app/main.py"]
 
