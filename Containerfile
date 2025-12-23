@@ -6,8 +6,9 @@ RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.51 &&
 
 WORKDIR /app
 
-RUN addgroup -S -g 1000 appuser && adduser -S -u 1000 -G appuser appuser 
+RUN addgroup -S -g 1000 appuser && adduser -S -u 1000 -G appuser appuser && chown appuser:appuser /app/.venv && chown appuser:appuser /app/cogs 
 
+USER appuser
 
 # Kubernetes (and by extension OKD) won't read python standardout if python's
 # buffer is allowed to do stuff. Here we turn it off
@@ -15,6 +16,10 @@ ENV PYTHONUNBUFFERED=1
 
 # Disable development dependencies
 ENV UV_NO_DEV=1
+
+# Set UV cache dir
+ENV UV_CACHE_DIR=/home/appuser/.cache/uv
+
 
 # Compile everything to bytecode
 ENV UV_COMPILE_BYTECODE=1
@@ -31,9 +36,6 @@ RUN uv sync --locked --no-install-project --no-dev
 COPY --chown=appuser:appuser ./*.py ./
 COPY --chown=appuser:appuser ./cogs/*.py ./cogs/
 RUN uv sync --locked --no-editable --no-dev 
-
-
-USER appuser
 
 CMD [ "uv", "run", "/app/main.py"]
 
