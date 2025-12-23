@@ -1,8 +1,8 @@
-FROM python:3.13-alpine
+FROM python:3.13-alpine3.23
 
 
 #TODO: update uv to a later version (or redo the entire container to use uv only and not python as uv can handle installing python itself)
-RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.49 && apk add --no-cache uv=~0.7 
+RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.51 && apk add --no-cache uv=~0.9 
 
 WORKDIR /app
 
