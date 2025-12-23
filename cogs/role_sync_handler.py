@@ -3,14 +3,7 @@ from __future__ import annotations
 from typing import final, override
 
 import discord
-from discord import (
-    AllowedMentions,
-    Client,
-    Message,
-    Permissions,
-    app_commands,
-    ui,
-)
+from discord import Client, Message, Permissions, app_commands, ui
 from discord.abc import GuildChannel, Messageable
 from discord.ext import commands
 
@@ -23,6 +16,8 @@ class RoleConfigView(ui.LayoutView):
     def __init__(self):
         super().__init__()
         self.message: Message | None = None
+
+    text: ui.TextDisplay[RoleConfigView] = ui.TextDisplay("test")
 
 
 class SetupChannelModal(ui.Modal, title="Set up role sync config channel"):
@@ -52,10 +47,14 @@ class SetupChannelModal(ui.Modal, title="Set up role sync config channel"):
             interaction.guild_id,
             CogSetting.ROLE_SYNC_HANDLER,
             "config_channel_id",
-            str(self.channel.component.values[0]),
+            str(self.channel.component.values[0].id),
         )
         _ = await interaction.response.send_message(
-            f"Set <#{self.channel.component.values[0].id}> as config channel"
+            (
+                "Successfully set "
+                f"<#{self.channel.component.values[0].id}> "
+                "as config channel"
+            )
         )
 
 
@@ -89,13 +88,15 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
                 (
                     "There is no config channel set up for this server, "
                     "please ask an administrator to run the setup command"
-                )
+                ),
+                ephemeral=True,
             )
             return
         channel = interaction.guild.get_channel_or_thread(int(channel_id))
         if not isinstance(channel, GuildChannel):
             _ = interaction.response.send_message(
-                "Error whilst trying to find channel, please contact an admin"
+                "Error whilst trying to find channel, please contact an admin",
+                ephemeral=True,
             )
             print(
                 (
@@ -118,8 +119,9 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
         _ = await interaction.response.send_message(
             (
                 f"Set up <@&{self.discord_role.component.values[0].id}> "
-                f"to link to {self.authentic_role.component.value}."
+                f"to link to `{self.authentic_role.component.value}`."
             ),
+            ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -133,6 +135,7 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
+    # TODO: write description
     async def initialize_role_sync(
         self, interaction: discord.Interaction
     ) -> None:
@@ -179,6 +182,34 @@ class RoleSyncHandler(commands.Cog):
                 "Please use this command again to re-configure role sync"
             ),
         )
+
+    @app_commands.command()
+    @app_commands.guild_only()
+    @app_commands.default_permissions(Permissions(administrator=True))
+    # TODO: write description
+    async def create_role_mapping(self, interaction: discord.Interaction):
+        assert interaction.guild_id
+        config_channel_id = await self.bot.db.get_setting(
+            interaction.guild_id,
+            CogSetting.ROLE_SYNC_HANDLER,
+            "config_channel_id",
+        )
+        if not config_channel_id:
+            _ = await interaction.response.send_message(
+                "Please run /initialize_role_sync to set up the bot",
+                ephemeral=True,
+            )
+            return
+
+        if not interaction.channel_id == int(config_channel_id):
+            _ = await interaction.response.send_message(
+                (
+                    "This is not a role config channel, "
+                    f"please configure the bot in <#{config_channel_id}>"
+                ),
+                ephemeral=True,
+            )
+        _ = await interaction.response.send_modal(AddRoleConfig(self.bot.db))
 
 
 # ----------------------MAIN PROGRAM----------------------
