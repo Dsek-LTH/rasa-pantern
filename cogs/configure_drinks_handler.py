@@ -3,11 +3,18 @@ from __future__ import annotations
 from typing import final, override
 
 import discord
-from discord import InteractionMessage, Permissions, app_commands, ui
+from discord import (
+    InteractionMessage,
+    PartialMessage,
+    Permissions,
+    abc,
+    app_commands,
+    ui,
+)
 from discord.ext import commands
 
 import db_handler
-from helpers import SettingsCog
+from helpers import CogSetting
 from main import PanternBot
 
 
@@ -18,37 +25,44 @@ class ConfigureDrinksView(ui.LayoutView):
         drink_list: list[str],
         db: db_handler.DBHandler,
     ):
-        super().__init__()
+        super().__init__(timeout=None)
         self.guild_id: int = guild_id
         self.drink_list: list[str] = drink_list
         self.db: db_handler.DBHandler = db
+        self.message: InteractionMessage | PartialMessage | None = None
 
         self.text: ui.TextDisplay[ConfigureDrinksView] = ui.TextDisplay(
             content=self._get_drink_string(self.drink_list)
         )
 
-        _ = self.add_item(self.text)
+        self.add_button: ui.Button[ConfigureDrinksView] = ui.Button(
+            label="Add drink",
+            style=discord.ButtonStyle.green,
+            custom_id=f"{self.guild_id}ConfigureDrinksViewAddDrink",
+        )
+        self.add_button.callback = self.add_drink_button
 
-        # fields defined in init are always assinged last. Here we flip the
-        # buttons to be after the text. This is kinda sketchy, but it works!
-        self._children.append(self._children.pop(0))
-        self.message: InteractionMessage | None = None
+        self.remove_button: ui.Button[ConfigureDrinksView] = ui.Button(
+            label="Remove drink",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"{self.guild_id}ConfigureDrinksViewRemoveDrink",
+        )
+        self.remove_button.callback = self.remove_drink_button
 
-    row: ui.ActionRow[ConfigureDrinksView] = ui.ActionRow()
+        self.row: ui.ActionRow[ConfigureDrinksView] = ui.ActionRow()
+        _ = self.row.add_item(self.add_button).add_item(self.remove_button)
 
-    @row.button(label="Add drink", style=discord.ButtonStyle.green)
+        _ = self.add_item(self.text).add_item(self.row)
+
     async def add_drink_button(
         self,
         interaction: discord.Interaction,
-        _button: ui.Button[ConfigureDrinksView],
     ):
         _ = await interaction.response.send_modal(AddDrinkModal(self))
 
-    @row.button(label="Remove drink", style=discord.ButtonStyle.danger)
     async def remove_drink_button(
         self,
         interaction: discord.Interaction,
-        _button: ui.Button[ConfigureDrinksView],
     ):
         _ = await interaction.response.send_modal(
             RemoveDrinkModal(self, self.drink_list)
@@ -62,7 +76,12 @@ class ConfigureDrinksView(ui.LayoutView):
         return "\n".join(message)
 
     async def update_drink_list(self):
-        assert self.message
+        if not self.message:
+            # This means the message has been removed by one user whilst
+            # another clicked the button. We just want to wait out the delay
+            # before this view is disabled.
+            return
+
         self.drink_list = await self.db.get_drink_option_list(self.guild_id)
         self.text.content = self._get_drink_string(self.drink_list)
         _ = await self.message.edit(view=self)
@@ -71,6 +90,18 @@ class ConfigureDrinksView(ui.LayoutView):
     async def create(cls, guild_id: int, db: db_handler.DBHandler):
         drink_list = await db.get_drink_option_list(guild_id)
         return ConfigureDrinksView(guild_id, drink_list, db)
+
+    @classmethod
+    async def create_deactivated(
+        cls, message: PartialMessage, guild_id: int, db: db_handler.DBHandler
+    ):
+        drink_list = await db.get_drink_option_list(guild_id)
+        view = ConfigureDrinksView(guild_id, drink_list, db)
+        view.message = message
+        view.remove_button.disabled = True
+        view.add_button.disabled = True
+        view.stop()
+        return view
 
 
 class AddDrinkModal(ui.Modal, title="add drink"):
@@ -164,7 +195,7 @@ class ConfigureDrinksHandler(commands.Cog):
 
         allowed_roles_raw = await self.bot.db.get_setting(
             interaction.guild_id,
-            SettingsCog.DRINKS_HANDLER,
+            CogSetting.CONFIGURE_DRINKS_HANDLER,
             "change_drink_perms",
         )
         if allowed_roles_raw:
@@ -185,20 +216,48 @@ class ConfigureDrinksHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     async def configure_drinks(self, interaction: discord.Interaction) -> None:
-        if not interaction.guild_id:
-            # If we reach this and don't have a guild id despite this
-            # command being set to guild only something is very wrong...
-            raise ValueError("Cannot find guild id")
+        assert interaction.guild
+        assert interaction.guild_id
 
         view: ConfigureDrinksView = await ConfigureDrinksView.create(
             interaction.guild_id, self.bot.db
         )
         _ = await interaction.response.send_message(view=view)
         view.message = await interaction.original_response()
-        # TODO: Have it show a list of all current options and then have
-        # an add and delete button at the bottom. Add gives a popup
-        # where you can put in a new name, whilst remove gives you a
-        # dropdown where you can select one or multiple to remove.
+
+        old_config = await self.bot.db.get_setting(
+            interaction.guild_id,
+            CogSetting.CONFIGURE_DRINKS_HANDLER,
+            "config_message",
+        )
+        if old_config:
+            channel_id, message_id = old_config.split("|")
+            channel = interaction.guild.get_channel_or_thread(int(channel_id))
+            if isinstance(channel, abc.Messageable):
+                message = channel.get_partial_message(int(message_id))
+                # WARN: This doesn't properly remove the existing class afaik,
+                # which in theory could lead to memory leaks. But then again...
+                # It's python.
+                old_view: ConfigureDrinksView = (
+                    await ConfigureDrinksView.create_deactivated(
+                        message, interaction.guild_id, self.bot.db
+                    )
+                )
+                _ = await message.edit(view=old_view)
+
+            await self.bot.db.update_setting(
+                interaction.guild_id,
+                CogSetting.CONFIGURE_DRINKS_HANDLER,
+                "config_message",
+                f"{interaction.channel_id}|{view.message.id}",
+            )
+        else:
+            await self.bot.db.set_setting(
+                interaction.guild_id,
+                CogSetting.CONFIGURE_DRINKS_HANDLER,
+                "config_message",
+                f"{interaction.channel_id}|{view.message.id}",
+            )
 
 
 # ----------------------MAIN PROGRAM----------------------
@@ -206,4 +265,16 @@ class ConfigureDrinksHandler(commands.Cog):
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
     print("\tcogs.configure_drinks_handler begin loading")
+    print("\t\tloading config from database:")
+    # Holds guild_id and a string id with <channel_id>|<message_id>
+    settings = await bot.db.get_settings(
+        CogSetting.CONFIGURE_DRINKS_HANDLER, "config_message"
+    )
+    if settings:
+        for guild_id in settings:
+            print(f"\t\t\t loaded config for guild_id: {guild_id}")
+            bot.add_view(await ConfigureDrinksView.create(guild_id, bot.db))
+    else:
+        print("\t\t\t no config entries in database!")
+
     await bot.add_cog(ConfigureDrinksHandler(bot))

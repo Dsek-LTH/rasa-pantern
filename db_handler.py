@@ -4,7 +4,7 @@ from typing import final
 
 import asqlite
 
-from helpers import RoleMapping, SettingsCog
+from helpers import CogSetting, RoleMapping
 
 
 @final
@@ -544,7 +544,7 @@ class DBHandler:
     # ------------------------------------------------------
     # settings system:
     async def set_setting(
-        self, guild_id: int, cog: SettingsCog, setting_name: str, value: str
+        self, guild_id: int, cog: CogSetting, setting_name: str, value: str
     ) -> None:
         """
         Sets a setting to a value in a given guild and cog.
@@ -555,8 +555,8 @@ class DBHandler:
             setting_name (str): The setting to set.
             value (str): The value to set it to.
         """
-        # TODO: Make this both insert and update
-        # BUG: ^^^
+        # TODO: Make this both insert and update instead of having 2 functions
+        # maybe?
         set_setting_query = """
             INSERT INTO
                 settings (guild_id, cog, config_name, value)
@@ -568,8 +568,35 @@ class DBHandler:
             (guild_id, cog.value, setting_name, value),
         )
 
+    async def update_setting(
+        self, guild_id: int, cog: CogSetting, setting_name: str, value: str
+    ) -> None:
+        """
+        Updates a setting with value in a given guild and cog.
+
+        Args:
+            guild_id (int): The guild to update the setting for.
+            cog (SettingsCog): The cog to update the setting for.
+            setting_name (str): The setting to update set.
+            value (str): The value to update it to.
+        """
+        update_setting_query = """
+            UPDATE settings
+            SET value = ?
+            WHERE
+                guild_id = ?
+            AND
+                cog = ?
+            AND
+                config_name = ?
+        """
+        await self._execute_query(
+            update_setting_query,
+            (value, guild_id, cog.value, setting_name),
+        )
+
     async def get_setting(
-        self, guild_id: int, cog: SettingsCog, setting_name: str
+        self, guild_id: int, cog: CogSetting, setting_name: str
     ) -> str | None:
         """
         Gets the value of a given setting in a given cog and guild.
@@ -600,34 +627,34 @@ class DBHandler:
         return str(table_field["value"])
 
     async def get_settings(
-        self, guild_id: int, cog: SettingsCog
-    ) -> dict[str, str] | None:
+        self, cog: CogSetting, setting_name: str
+    ) -> dict[int, str] | None:
         """
         Gets all settings for the given cog and guild.
 
         Args:
-            guild_id (int): The guild to search in.
             cog (SettingsCog): The cog to get settings for.
+            setting_name (str): The setting to get.
 
         Returns:
-            dict[str, str]: A dict mapping setting name to value.
+            dict[int, str]: A dict mapping guils_id to value.
         """
         get_setting_query = """
-            SELECT config_name, value FROM
+            SELECT guild_id, value FROM
                 settings
             WHERE
-                guild_id = ?
+                config_name = ?
             AND
                 cog = ?
         """
         db_return = await self._execute_multiple_read_query(
-            get_setting_query, (guild_id, cog.value)
+            get_setting_query, (setting_name, cog.value)
         )
         if not db_return:
             return None
-        return_dict: dict[str, str] = {}
+        return_dict: dict[int, str] = {}
         for setting in db_return:
-            return_dict[str(setting["config_name"])] = str(setting["value"])
+            return_dict[int(setting["guild_id"])] = str(setting["value"])
         return return_dict
 
 
