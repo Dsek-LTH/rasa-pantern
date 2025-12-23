@@ -42,7 +42,7 @@ class DBHandler:
         CREATE TABLE IF NOT EXISTS tallies (
             "id" INTEGER PRIMARY KEY NOT NULL,
             "guild_id" INTEGER NOT NULL,
-            "message_id" INTEGER UNIQUE  NOT NULL
+            "message_id" INTEGER UNIQUE NOT NULL
         );
         """
         await self._execute_query(create_tallies_table)
@@ -53,7 +53,9 @@ class DBHandler:
             "id" INTEGER PRIMARY KEY NOT NULL,
             "message_id" INTEGER UNIQUE NOT NULL,
             "role_id" TEXT UNIQUE NOT NULL,
-            "discord_role_id" INTEGER NOT NULL
+            "discord_role_id" INTEGER NOT NULL,
+            "guild_id" INTEGER NOT NULL,
+            UNIQUE(discord_role_id, role_id)
         );
         """
         await self._execute_query(create_role_config_table)
@@ -448,7 +450,11 @@ class DBHandler:
     # ------------------------------------------------------
     # role config system:
     async def create_role_config(
-        self, message_id: int, role_id: str, discord_role_id: int
+        self,
+        message_id: int,
+        role_id: str,
+        discord_role_id: int,
+        guild_id: int,
     ) -> None:
         """
         Create a role config mapping.
@@ -458,20 +464,21 @@ class DBHandler:
                             setting in discord.
             role_id (str): The LDAP role id for this mapping.
             discord_role_id (int): The discord role id for this mapping.
+            guild_id (int): The guild id for this mapping.
         """
         add_config_message_query = """
             INSERT INTO
-                role_configs (message_id, role_id, discord_role_id)
+                role_configs (message_id, role_id, discord_role_id, guild_id)
             VALUES
-                (?, ?, ?)
+                (?, ?, ?, ?)
         """
         await self._execute_query(
             add_config_message_query,
-            (message_id, role_id, discord_role_id),
+            (message_id, role_id, discord_role_id, guild_id),
         )
 
     async def update_role_config(
-        self, message_id: int, discord_role_id: int
+        self, message_id: int, discord_role_id: int, role_id: int
     ) -> None:
         """
         Update mapping for a role config.
@@ -479,18 +486,20 @@ class DBHandler:
         Args:
             message_id (int): message id of the config to update.
             discord_role_id (int): new discord role to map to this LADP role.
+            guild_id (int): The guild id for this mapping.
 
         """
         update_role_config_query = """
         UPDATE role_configs
         SET
-            discord_role_id = ?
+            discord_role_id = ?,
+            role_id = ?
         WHERE
             message_id = ?
         """
         await self._execute_query(
             update_role_config_query,
-            (discord_role_id, message_id),
+            (discord_role_id, message_id, role_id),
         )
 
     async def remove_role_config(self, message_id: int) -> None:
@@ -509,7 +518,23 @@ class DBHandler:
             (message_id,),
         )
 
-    async def get_config_messages(self) -> list[RoleMapping]:
+    async def purge_role_configs(self, guild_id: int) -> None:
+        """
+        Removes all role mappings for an entire guild.
+
+        Args:
+            guild_id (int): The id of the guild.
+        """
+        purge_config_message_query = """
+            DELETE FROM role_configs
+            WHERE guild_id = ?
+        """
+        await self._execute_query(
+            purge_config_message_query,
+            (guild_id,),
+        )
+
+    async def get_all_config_messages(self) -> list[RoleMapping]:
         """
         Gets all role mapping configs.
 
@@ -522,6 +547,41 @@ class DBHandler:
         """
         config_messages = await self._execute_multiple_read_query(
             get_config_message_query
+        )
+        return_list: list[RoleMapping] = []
+        if config_messages:
+            for message in config_messages:
+                if (
+                    not isinstance(message["message_id"], int)
+                    or not isinstance(message["role_id"], str)
+                    or not isinstance(message["discord_role_id"], int)
+                ):
+                    return return_list
+                return_list.append(
+                    RoleMapping(
+                        message["message_id"],
+                        message["role_id"],
+                        message["discord_role_id"],
+                    )
+                )
+        return return_list
+
+    async def get_config_messages(self, guild_id: int) -> list[RoleMapping]:
+        """
+        Gets all role mapping configs.
+
+        Args:
+            guild_id: the gulid id to get config mappings from.
+        Returns:
+            list[RoleMapping]: A list of role mappings.
+        """
+        get_config_message_query = """
+            SELECT message_id, role_id, discord_role_id
+            FROM role_configs
+            WHERE guild_id = ?
+        """
+        config_messages = await self._execute_multiple_read_query(
+            get_config_message_query, (guild_id,)
         )
         return_list: list[RoleMapping] = []
         if config_messages:
@@ -656,6 +716,35 @@ class DBHandler:
         for setting in db_return:
             return_dict[int(setting["guild_id"])] = str(setting["value"])
         return return_dict
+
+    async def remove_setting(
+        self, guild_id: int, cog: CogSetting, setting_name: str
+    ) -> None:
+        """
+        Removes the given setting.
+
+        Args:
+            guild_id (int): The guild to to remove the setting from.
+            cog (SettingsCog): The cog to remove the setting in.
+            setting_name (str): The setting to remove.
+        """
+        remove_setting_query = """
+            DELETE FROM settings
+            WHERE
+                guild_id = ?
+            AND
+                cog = ?
+            AND
+                config_name = ?
+        """
+        await self._execute_query(
+            remove_setting_query,
+            (
+                guild_id,
+                cog.value,
+                setting_name,
+            ),
+        )
 
 
 if __name__ == "__main__":

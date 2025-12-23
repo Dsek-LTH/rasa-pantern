@@ -1,36 +1,9 @@
-table holding config options and what message changes them
+We have functions in the database for handling all our role configs.
 
-messageId, guildId, optionName (maybe enum??? seems hard to do. Can we extend
-enums like classes? in that case we could have a base enum in the db file and
-then extensions in the cogs.), cogName (enum), option value. Maybe have an
-option type in there too?
+Get a list of all users that have connected accounts from Janus (or discord, and then get their stil-id via Janus).
+Make a list of all roles that **aren't** going to be synced
+Save who has what un-synceable roles somewhere (prob to disk ngl, seems dangerous to do in memory if shit crashes).
+Get all roles for all users from authentic and put them in a dict or something, mapping the user to their roles.
+Replace the authentic ids with discord role ids
+Start overwriting roles for users one by one going by the dict
 
-
-can hold settings for both the drinks_handler, and role_handler sort of things.
-
-drinks_handler has drink types for example where no data needs to be stored
-
-role handler could potentially do the same thing, but could also store data
-straight in the db... That would be wrong though, and Dag wouldn't like it...
-
-
-should probably probably hold config messages for proper db design....
-
-
-
-when creating a new config entry it should
-1. Check if there already exists an entry for the given server
-2. If yes, send a link to that message and warn that it will be removed. Also
-show a dropdown for a new selection of channels.
-3. If no then just show a dropdown of channels to select for setting channel.
-
-
-for the drinks options, have a command to change it. Have it show a list of all
-current options and then have an add and delete button at the bottom. Add gives
-a popup where you can put in a new name, whilst remove gives you a dropdown
-where you can select one or multiple to remove.
-
-
-For the actual role sync itself we want to keep track of all unsynced roles and
-who has them. When it's time to sync we simply overwrite the user's role with
-our own custom list.

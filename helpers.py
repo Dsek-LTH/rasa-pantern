@@ -15,3 +15,4 @@ class RoleMapping:
 class CogSetting(Enum):
     DRINKS_HANDLER = 0
     CONFIGURE_DRINKS_HANDLER = 1
+    ROLE_SYNC_HANDLER = 2
