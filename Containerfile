@@ -28,7 +28,7 @@ LABEL se.dsek.env.required="TOKEN, DB_FILE"
 LABEL se.dsek.env.token.description="Discord bot token"
 LABEL se.dsek.env.db_file.description="Database file (default is db.sqlite, if you change this also change mount path"
 
-COPY --chown=appuser:appuser pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev 
 
 COPY ./*.py ./

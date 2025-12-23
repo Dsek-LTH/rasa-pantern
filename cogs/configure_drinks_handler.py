@@ -32,7 +32,7 @@ class ConfigureDrinksView(ui.LayoutView):
         self.message: InteractionMessage | PartialMessage | None = None
 
         self.text: ui.TextDisplay[ConfigureDrinksView] = ui.TextDisplay(
-            content=self._get_drink_string(self.drink_list)
+            content=_get_drink_string(self.drink_list)
         )
 
         self.add_button: ui.Button[ConfigureDrinksView] = ui.Button(
@@ -68,22 +68,11 @@ class ConfigureDrinksView(ui.LayoutView):
             RemoveDrinkModal(self, self.drink_list)
         )
 
-    def _get_drink_string(self, drink_list: list[str]) -> str:
-        message = ["These are the currently available drinks", "```"]
-        for drink_name in drink_list:
-            message.append(f" - {drink_name}")
-        message.append("```")
-        return "\n".join(message)
-
     async def update_drink_list(self):
-        if not self.message:
-            # This means the message has been removed by one user whilst
-            # another clicked the button. We just want to wait out the delay
-            # before this view is disabled.
-            return
+        assert self.message
 
         self.drink_list = await self.db.get_drink_option_list(self.guild_id)
-        self.text.content = self._get_drink_string(self.drink_list)
+        self.text.content = _get_drink_string(self.drink_list)
         _ = await self.message.edit(view=self)
 
     @classmethod
@@ -117,7 +106,15 @@ class AddDrinkModal(ui.Modal, title="add drink"):
     @override
     async def on_submit(self, interaction: discord.Interaction):
         assert isinstance(self.name.component, ui.TextInput)
-        # TODO: Check for duplicate drinks here
+        if (
+            self.name.component.value
+            in await self.drinks_view.db.get_drink_option_list(
+                self.drinks_view.guild_id
+            )
+        ):
+            _ = await interaction.response.send_message(
+                f"{self.name.component.value} already exists in the list."
+            )
         await self.drinks_view.db.add_drink_option(
             self.drinks_view.guild_id, self.name.component.value
         )
@@ -135,32 +132,54 @@ class RemoveDrinkModal(ui.Modal, title="remove drink"):
         super().__init__()
         self.drinks_view: ConfigureDrinksView = drinks_view
         self.drinks_list: list[str] = drinks_list
+        self.large_input: bool = False
 
-        # TODO: Make sure that we don't have more than 25 drinks, and in that
-        # case do something else (like a textInput for example)
-        self.name: ui.Label[AddDrinkModal] = ui.Label(
-            text="What drink would you like to remove",
-            component=ui.Select(
-                placeholder="select a drink",
-                options=[
-                    discord.SelectOption(label=name, value=name)
-                    for name in self.drinks_list
-                ],
-                max_values=1,
-            ),
-        )
-        _ = self.add_item(self.name)
+        if len(self.drinks_list) > 25:
+            self.large_input = True
+            # For some reason ui.TextDisplay can't have ui.Modal as a generic,
+            # so we're just ignoring typing here. Lessgo python
+            self.long_list: ui.TextDisplay = ui.TextDisplay(  # pyright: ignore
+                _get_drink_string(drinks_list)
+            )
+            self.input_name: ui.Label[RemoveDrinkModal] = ui.Label(
+                text="What drink would you like to remove",
+                component=ui.TextInput(placeholder="name"),
+            )
+            _ = self.add_item(self.long_list)  # pyright: ignore
+            _ = self.add_item(self.input_name)
+        else:
+            self.select_name: ui.Label[RemoveDrinkModal] = ui.Label(
+                text="What drink would you like to remove",
+                component=ui.Select(
+                    placeholder="select a drink",
+                    options=[
+                        discord.SelectOption(label=name, value=name)
+                        for name in self.drinks_list
+                    ],
+                    max_values=1,
+                ),
+            )
+            _ = self.add_item(self.select_name)
 
     @override
     async def on_submit(self, interaction: discord.Interaction):
-        assert isinstance(self.name.component, ui.Select)
+        assert self.drinks_view.message
+        value: str
+        if self.large_input:
+            assert isinstance(self.input_name.component, ui.TextInput)
+            value = self.input_name.component.value
+        else:
+            assert isinstance(self.select_name.component, ui.Select)
+            value = self.select_name.component.values[0]
+
         await self.drinks_view.db.remove_drink_option(
-            self.drinks_view.guild_id, self.name.component.values[0]
+            self.drinks_view.guild_id, value
         )
         _ = await interaction.response.send_message(
-            f"Removing {self.name.component.values[0]} from the list of drinks!",
+            f"Removing {value} from the list of drinks!",
             ephemeral=True,
         )
+
         await self.drinks_view.update_drink_list()
 
 
@@ -231,10 +250,10 @@ class ConfigureDrinksHandler(commands.Cog):
             "config_message",
         )
         if old_config:
-            channel_id, message_id = old_config.split("|")
-            channel = interaction.guild.get_channel_or_thread(int(channel_id))
+            channel_id, message_id = map(int, old_config.split("|"))
+            channel = interaction.guild.get_channel_or_thread(channel_id)
             if isinstance(channel, abc.Messageable):
-                message = channel.get_partial_message(int(message_id))
+                message = channel.get_partial_message(message_id)
                 # WARN: This doesn't properly remove the existing class afaik,
                 # which in theory could lead to memory leaks. But then again...
                 # It's python.
@@ -260,6 +279,14 @@ class ConfigureDrinksHandler(commands.Cog):
             )
 
 
+def _get_drink_string(drink_list: list[str]) -> str:
+    message = ["These are the currently available drinks", "```"]
+    for drink_name in drink_list:
+        message.append(f" - {drink_name}")
+    message.append("```")
+    return "\n".join(message)
+
+
 # ----------------------MAIN PROGRAM----------------------
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
@@ -272,8 +299,18 @@ async def setup(bot: PanternBot) -> None:
     )
     if settings:
         for guild_id in settings:
-            print(f"\t\t\t loaded config for guild_id: {guild_id}")
-            bot.add_view(await ConfigureDrinksView.create(guild_id, bot.db))
+            guild = bot.get_guild(guild_id)
+            print(f"\t\t\t loaded config for guild: {guild}, id: {guild_id}")
+            view = await ConfigureDrinksView.create(guild_id, bot.db)
+            if guild:
+                channel_id, message_id = map(
+                    int, settings[guild_id].split("|")
+                )
+                channel = guild.get_channel_or_thread(channel_id)
+                if isinstance(channel, abc.Messageable):
+                    view.message = channel.get_partial_message(message_id)
+
+            bot.add_view(view)
     else:
         print("\t\t\t no config entries in database!")
 

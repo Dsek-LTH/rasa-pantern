@@ -41,7 +41,23 @@ class PanternBot(commands.Bot):
             print("WARNING: Failed login, quitting")
             quit()
 
+        print("-" * 100)
         print(f"Logged in as {self.user} (ID: {self.user.id})")
+        print("-" * 100)
+
+        print("Loading late cogs:")
+        late_load_extensions = [
+            "cogs.configure_drinks_handler",
+        ]
+        for extension in late_load_extensions:
+            try:
+                await bot.load_extension(extension)
+                print(f"\t{extension} loaded")
+            except Exception:
+                print(f"Failed to load extension {extension}.")
+                traceback.print_exc()
+        print("Done loading late cogs \n")
+
         try:
             # We might want to make a command that deals with this instead.
             # Syncing on every startup is excessive and eats both time and
@@ -58,17 +74,18 @@ class PanternBot(commands.Bot):
 
         # Load cogs:
         print("loading cogs:")
-        extensions = [
+        early_load_extensions = [
             "cogs.drinks_handler",
-            "cogs.configure_drinks_handler",
         ]
-        for extension in extensions:
+        for extension in early_load_extensions:
             try:
                 await bot.load_extension(extension)
                 print(f"\t{extension} loaded")
             except Exception:
                 print(f"Failed to load extension {extension}.")
                 traceback.print_exc()
+
+        print("done loading cogs")
 
         # Sync app commands with Discord:
         # await self.tree.sync()
