@@ -6,7 +6,7 @@ RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.51 &&
 
 WORKDIR /app
 
-RUN addgroup -S -g 1000 appuser && adduser -S -u 1000 -G appuser appuser && chown appuser:appuser /app/.venv && chown appuser:appuser /app/cogs 
+RUN addgroup -S appuser && adduser -S -G appuser appuser && chown appuser:appuser /app/.venv && chown appuser:appuser /app/cogs 
 
 USER appuser
 
@@ -35,7 +35,7 @@ RUN uv sync --locked --no-install-project --no-dev
 
 COPY --chown=appuser:appuser ./*.py ./
 COPY --chown=appuser:appuser ./cogs/*.py ./cogs/
-RUN uv sync --locked --no-editable --no-dev && chown -R appuser:appuser /home/appuser/.cache/uv
+RUN uv sync --locked --no-editable --no-dev
 
 CMD [ "uv", "run", "/app/main.py"]
 
