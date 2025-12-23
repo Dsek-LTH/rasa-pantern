@@ -6,7 +6,7 @@ RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.51 &&
 
 WORKDIR /app
 
-RUN addgroup -S appuser && adduser -S -u 1000 -G appuser appuser 
+RUN addgroup -S -g 1000 appuser && adduser -S -u 1000 -G appuser appuser 
 
 
 # Kubernetes (and by extension OKD) won't read python standardout if python's
