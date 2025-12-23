@@ -641,7 +641,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     _ = load_dotenv()
-    db_file = environ["db_file"]
+    db_file = environ["DB_FILE"]
 
     dbHandler = DBHandler(db_file)
     asyncio.run(dbHandler.create_tables())
