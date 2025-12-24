@@ -3,21 +3,183 @@ from __future__ import annotations
 from typing import final, override
 
 import discord
-from discord import Client, Message, Permissions, app_commands, ui
+from discord import Client, Interaction, Message, Permissions, app_commands, ui
 from discord.abc import GuildChannel, Messageable
 from discord.ext import commands
 
 from db_handler import DBHandler
-from helpers import CogSetting
+from helpers import CogSetting, RoleMapping
 from main import PanternBot
 
 
 class RoleConfigView(ui.LayoutView):
-    def __init__(self):
+    def __init__(self, db: DBHandler, role_map: RoleMapping | None = None):
         super().__init__()
         self.message: Message | None = None
+        self.db: DBHandler = db
+        self.role_map: RoleMapping | None = role_map
 
-    text: ui.TextDisplay[RoleConfigView] = ui.TextDisplay("test")
+        edit_discord_role_button = ui.Button[RoleConfigView](
+            style=discord.ButtonStyle.grey,
+            label="Edit Discord role",
+        )
+        edit_discord_role_button.callback = self.edit_discord_id_callback
+
+        edit_external_role_button = ui.Button[RoleConfigView](
+            style=discord.ButtonStyle.grey,
+            label="Edit external role",
+        )
+        edit_external_role_button.callback = self.edit_external_id_callback
+
+        self.container: ui.Container[RoleConfigView] = ui.Container(
+            ui.TextDisplay(
+                (
+                    (
+                        "mapping discord role "
+                        f"<@&<{self.role_map.discord_role_id}> "
+                        f"to other role: `{self.role_map.role_id}`."
+                    )
+                    if self.role_map
+                    else "Please wait a second"
+                ),
+                id=1,
+            ),
+            ui.ActionRow[RoleConfigView](
+                edit_discord_role_button, edit_external_role_button
+            ),
+            # D-guild pink (#F280A1):
+            accent_colour=discord.Colour(15892641),
+        )
+        #  .callback = edit_discord_id
+        _ = self.add_item(self.container)
+
+        delete_role_mapping_button = ui.Button[RoleConfigView](
+            style=discord.ButtonStyle.danger,
+            label="Delete config mapping",
+        )
+        delete_role_mapping_button.callback = self.delete_role_mapping_callback
+
+        self.delete_row: ui.ActionRow[RoleConfigView] = discord.ui.ActionRow(
+            delete_role_mapping_button
+        )
+        _ = self.add_item(self.delete_row)
+
+    async def edit_discord_id_callback(self, interaction: discord.Interaction):
+        assert interaction.guild
+        assert self.role_map
+        discord_role = interaction.guild.get_role(
+            self.role_map.discord_role_id
+        )
+        discord_role_modal: ui.Modal = ui.Modal(title="Edit discord role")
+        role_select: ui.RoleSelect[RoleConfigView] = ui.RoleSelect(
+            required=True,
+            placeholder=(discord_role.name if discord_role else "NULL"),
+        )
+
+        _ = discord_role_modal.add_item(
+            ui.Label(text="Set discord role", component=role_select)
+        )
+        discord_role_modal.on_submit = (
+            lambda interaction: self.set_discord_role(interaction, role_select)
+        )
+
+        _ = await interaction.response.send_modal(discord_role_modal)
+
+    async def edit_external_id_callback(
+        self, interaction: discord.Interaction
+    ):
+        assert self.role_map
+        external_role_modal: ui.Modal = ui.Modal(title="Edit external role")
+        text_input: ui.TextInput[RoleConfigView] = ui.TextInput(
+            label="Set external role",
+            placeholder=self.role_map.role_id,
+            id=11,
+        )
+        _ = external_role_modal.add_item(text_input)
+
+        external_role_modal.on_submit = (
+            lambda interaction: self.set_external_role(interaction, text_input)
+        )
+        _ = await interaction.response.send_modal(external_role_modal)
+
+    async def delete_role_mapping_callback(
+        self, interaction: discord.Interaction
+    ):
+        confirm_delete_modal: ui.Modal = ui.Modal(title="Confirm deletion")
+        _ = confirm_delete_modal.add_item(
+            ui.TextDisplay(
+                content=(
+                    "Warning, this will remove this role config, "
+                    "are you sure you want to do that?"
+                )
+            )
+        )
+        confirm_delete_modal.on_submit = self.remove_role_mapping
+        _ = await interaction.response.send_modal(confirm_delete_modal)
+
+    async def set_discord_role(
+        self,
+        interaction: Interaction,
+        role_select: ui.RoleSelect[RoleConfigView],
+    ):
+        assert self.role_map
+        self.role_map.discord_role_id = role_select.values[0].id
+        _ = await interaction.response.defer()
+        await self.update_role_map()
+
+    async def set_external_role(
+        self,
+        interaction: Interaction,
+        text_input: ui.TextInput[RoleConfigView],
+    ):
+        assert self.role_map
+        self.role_map.role_id = text_input.value
+        _ = await interaction.response.defer()
+        await self.update_role_map()
+
+    async def remove_role_mapping(self, interaction: Interaction):
+        assert self.message
+        assert self.role_map
+        _ = await self.db.delete_role_config(self.message.id)
+        _ = await self.message.delete()
+        _ = await interaction.response.send_message(
+            (
+                "Removed role_mapping for "
+                f"<@&{self.role_map.discord_role_id}> "
+                f"linking to {self.role_map.role_id}."
+            ),
+            ephemeral=True,
+        )
+
+    async def set_role_map(self, role_map: RoleMapping):
+        self.role_map = role_map
+        await self.update_role_map()
+
+    async def set_message(self, message: Message):
+        self.message = message
+        _ = await self.message.edit(view=self)
+
+    async def update_role_map(self):
+        textDisplay = self.container.find_item(1)
+        assert self.role_map
+        assert self.message
+        assert isinstance(textDisplay, ui.TextDisplay)
+        textDisplay.content = (
+            f"mapping discord role <@&{self.role_map.discord_role_id}> "
+            f"to other role: `{self.role_map.role_id}`."
+        )
+        _ = await self.message.edit(view=self)
+
+    @classmethod
+    async def create(cls, db: DBHandler, message_id: int):
+        roleMap = await db.get_role_config(message_id)
+        assert roleMap
+        return RoleConfigView(db, roleMap)
+
+    @classmethod
+    async def createStopped(cls, db: DBHandler, role_map: RoleMapping):
+        view: RoleConfigView = RoleConfigView(db, role_map)
+        view.stop()
 
 
 class SetupChannelModal(ui.Modal, title="Set up role sync config channel"):
@@ -68,16 +230,16 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
         component=ui.RoleSelect(required=True, placeholder="Discord role"),
     )
 
-    authentic_role: ui.Label[AddRoleConfig] = ui.Label(
-        text="What Authentic role should it be linked to?",
-        component=ui.TextInput(placeholder="Authentic role id"),
+    role: ui.Label[AddRoleConfig] = ui.Label(
+        text="What external role should it be linked to?",
+        component=ui.TextInput(placeholder="Other role id"),
     )
 
     @override
     async def on_submit(self, interaction: discord.Interaction) -> None:
         assert interaction.guild
         assert isinstance(self.discord_role.component, ui.RoleSelect)
-        assert isinstance(self.authentic_role.component, ui.TextInput)
+        assert isinstance(self.role.component, ui.TextInput)
         channel_id = await self.db.get_setting(
             interaction.guild.id,
             CogSetting.ROLE_SYNC_HANDLER,
@@ -87,7 +249,7 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
             _ = interaction.response.send_message(
                 (
                     "There is no config channel set up for this server, "
-                    "please ask an administrator to run the setup command"
+                    "please ask an administrator to run the setup command."
                 ),
                 ephemeral=True,
             )
@@ -95,35 +257,40 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
         channel = interaction.guild.get_channel_or_thread(int(channel_id))
         if not isinstance(channel, GuildChannel):
             _ = interaction.response.send_message(
-                "Error whilst trying to find channel, please contact an admin",
+                (
+                    "Error whilst trying to find channel,"
+                    "please contact an admin."
+                ),
                 ephemeral=True,
             )
             print(
                 (
-                    "error in AddRoleConfig whilst trying to get channel. "
-                    f"Got {type(channel)} but was expecting GuildChannel"
+                    "Error in AddRoleConfig whilst trying to get channel. "
+                    f"Got {type(channel)} but was expecting GuildChannel."
                 )
             )
             return
         assert isinstance(channel, Messageable)
-        view = RoleConfigView()
+        view = RoleConfigView(self.db)
         message = await channel.send(view=view)
-        view.message = message
+        await view.set_message(message)
+
+        await view.set_role_map(
+            RoleMapping(
+                message.id,
+                self.role.component.value,
+                self.discord_role.component.values[0].id,
+                interaction.guild.id,
+            )
+        )
 
         _ = await self.db.create_role_config(
             message.id,
-            self.authentic_role.component.value,
+            self.role.component.value,
             self.discord_role.component.values[0].id,
             interaction.guild.id,
         )
-        _ = await interaction.response.send_message(
-            (
-                f"Set up <@&{self.discord_role.component.values[0].id}> "
-                f"to link to `{self.authentic_role.component.value}`."
-            ),
-            ephemeral=True,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
+        _ = await interaction.response.defer()
 
 
 @final
@@ -169,17 +336,35 @@ class RoleSyncHandler(commands.Cog):
         )
 
     async def reset_configs(self, interaction: discord.Interaction[Client]):
-        assert interaction.guild_id
-        await self.bot.db.remove_setting(
-            interaction.guild_id,
+        assert interaction.guild
+        old_channel_id = await self.bot.db.get_setting(
+            interaction.guild.id,
             CogSetting.ROLE_SYNC_HANDLER,
             "config_channel_id",
         )
-        await self.bot.db.purge_role_configs(interaction.guild_id)
+        assert old_channel_id
+
+        await self.bot.db.remove_setting(
+            interaction.guild.id,
+            CogSetting.ROLE_SYNC_HANDLER,
+            "config_channel_id",
+        )
+        mappings: list[RoleMapping] = await self.bot.db.get_guild_role_configs(
+            interaction.guild.id
+        )
+        channel = interaction.guild.get_channel_or_thread(int(old_channel_id))
+        if channel:
+            assert isinstance(channel, Messageable)
+            for mapping in mappings:
+                _ = await channel.get_partial_message(
+                    mapping.message_id
+                ).delete()
+
+        await self.bot.db.purge_role_configs(interaction.guild.id)
         _ = await interaction.response.send_message(
             (
                 "Config channel and all Role sync mappings have been purged.\n"
-                "Please use this command again to re-configure role sync"
+                "Please use this command again to re-configure role sync."
             ),
         )
 
@@ -205,7 +390,7 @@ class RoleSyncHandler(commands.Cog):
             _ = await interaction.response.send_message(
                 (
                     "This is not a role config channel, "
-                    f"please configure the bot in <#{config_channel_id}>"
+                    f"please configure the bot in <#{config_channel_id}>."
                 ),
                 ephemeral=True,
             )

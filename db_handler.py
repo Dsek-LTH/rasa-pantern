@@ -502,7 +502,7 @@ class DBHandler:
             (discord_role_id, message_id, role_id),
         )
 
-    async def remove_role_config(self, message_id: int) -> None:
+    async def delete_role_config(self, message_id: int) -> None:
         """
         Removes a given role mapping from the db.
 
@@ -534,7 +534,35 @@ class DBHandler:
             (guild_id,),
         )
 
-    async def get_all_config_messages(self) -> list[RoleMapping]:
+    async def get_role_config(self, message_id: int) -> RoleMapping | None:
+        """
+        Gets a single role mapping config given it's config message.
+
+        Args:
+            message_id (int): The message_id for the config message to get.
+
+        Returns:
+            tuple[str, int, int]: (role_id, discord_role_id , guild_id)
+        """
+
+        get_config_message_query = """
+            SELECT role_id, discord_role_id, guild_id FROM role_configs
+            WHERE message_id = ?
+        """
+
+        role_config = await self._execute_read_query(
+            get_config_message_query, (message_id,)
+        )
+        if not role_config:
+            return None
+        return RoleMapping(
+            message_id,
+            str(role_config["role_id"]),
+            int(role_config["discord_role_id"]),
+            int(role_config["guild_id"]),
+        )
+
+    async def get_all_role_configs(self) -> list[RoleMapping]:
         """
         Gets all role mapping configs.
 
@@ -555,6 +583,7 @@ class DBHandler:
                     not isinstance(message["message_id"], int)
                     or not isinstance(message["role_id"], str)
                     or not isinstance(message["discord_role_id"], int)
+                    or not isinstance(message["guild_id"], int)
                 ):
                     return return_list
                 return_list.append(
@@ -562,11 +591,12 @@ class DBHandler:
                         message["message_id"],
                         message["role_id"],
                         message["discord_role_id"],
+                        message["guild_id"],
                     )
                 )
         return return_list
 
-    async def get_config_messages(self, guild_id: int) -> list[RoleMapping]:
+    async def get_guild_role_configs(self, guild_id: int) -> list[RoleMapping]:
         """
         Gets all role mapping configs.
 
@@ -597,6 +627,7 @@ class DBHandler:
                         message["message_id"],
                         message["role_id"],
                         message["discord_role_id"],
+                        guild_id,
                     )
                 )
         return return_list
