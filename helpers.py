@@ -6,10 +6,10 @@ from typing import final
 class RoleMapping:
     def __init__(
         self,
-        message_id: int,
         role_id: str,
         discord_role_id: int,
         guild_id: int,
+        message_id: int | None = None,
     ) -> None:
         self.message_id = message_id
         self.role_id = role_id

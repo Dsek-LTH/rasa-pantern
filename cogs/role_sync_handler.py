@@ -13,21 +13,31 @@ from main import PanternBot
 
 
 class RoleConfigView(ui.LayoutView):
-    def __init__(self, db: DBHandler, role_map: RoleMapping | None = None):
-        super().__init__()
+    def __init__(
+        self, db: DBHandler, role_map: RoleMapping
+    ):  # | None = None):
+        super().__init__(timeout=None)
         self.message: Message | None = None
         self.db: DBHandler = db
-        self.role_map: RoleMapping | None = role_map
+        self.role_map: RoleMapping = role_map
 
         edit_discord_role_button = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.grey,
             label="Edit Discord role",
+            custom_id=(
+                "RCV-edit-discord-btn-"
+                f"{role_map.discord_role_id}{role_map.role_id}"
+            )[:100],
         )
         edit_discord_role_button.callback = self.edit_discord_id_callback
 
         edit_external_role_button = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.grey,
             label="Edit external role",
+            custom_id=(
+                "RCV-edit-external-btn-"
+                f"{role_map.discord_role_id}{role_map.role_id}"
+            )[:100],
         )
         edit_external_role_button.callback = self.edit_external_id_callback
 
@@ -36,7 +46,7 @@ class RoleConfigView(ui.LayoutView):
                 (
                     (
                         "mapping discord role "
-                        f"<@&<{self.role_map.discord_role_id}> "
+                        f"<@&{self.role_map.discord_role_id}> "
                         f"to other role: `{self.role_map.role_id}`."
                     )
                     if self.role_map
@@ -56,6 +66,10 @@ class RoleConfigView(ui.LayoutView):
         delete_role_mapping_button = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.danger,
             label="Delete config mapping",
+            custom_id=(
+                "RCV-edit-delete-btn-"
+                f"{role_map.discord_role_id}{role_map.role_id}"
+            )[:100],
         )
         delete_role_mapping_button.callback = self.delete_role_mapping_callback
 
@@ -122,12 +136,14 @@ class RoleConfigView(ui.LayoutView):
         interaction: Interaction,
         role_select: ui.RoleSelect[RoleConfigView],
     ):
+        # TODO: Make sure we can't make two identical mappings
         assert self.role_map
         self.role_map.discord_role_id = role_select.values[0].id
         _ = await interaction.response.defer()
         await self.update_role_map()
 
     async def set_external_role(
+        # TODO: Make sure we can't make two identical mappings
         self,
         interaction: Interaction,
         text_input: ui.TextInput[RoleConfigView],
@@ -179,6 +195,8 @@ class RoleConfigView(ui.LayoutView):
     @classmethod
     async def createStopped(cls, db: DBHandler, role_map: RoleMapping):
         view: RoleConfigView = RoleConfigView(db, role_map)
+        # TODO: remove all buttons (if we even want to use it. It is not in use
+        # currently)
         view.stop()
 
 
@@ -271,18 +289,14 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
             )
             return
         assert isinstance(channel, Messageable)
-        view = RoleConfigView(self.db)
+        role_map = RoleMapping(
+            self.role.component.value,
+            self.discord_role.component.values[0].id,
+            interaction.guild.id,
+        )
+        view = RoleConfigView(self.db, role_map)
         message = await channel.send(view=view)
         await view.set_message(message)
-
-        await view.set_role_map(
-            RoleMapping(
-                message.id,
-                self.role.component.value,
-                self.discord_role.component.values[0].id,
-                interaction.guild.id,
-            )
-        )
 
         _ = await self.db.create_role_config(
             message.id,
@@ -356,9 +370,10 @@ class RoleSyncHandler(commands.Cog):
         if channel:
             assert isinstance(channel, Messageable)
             for mapping in mappings:
-                _ = await channel.get_partial_message(
-                    mapping.message_id
-                ).delete()
+                if mapping.message_id:
+                    _ = await channel.get_partial_message(
+                        mapping.message_id
+                    ).delete()
 
         await self.bot.db.purge_role_configs(interaction.guild.id)
         _ = await interaction.response.send_message(
@@ -372,6 +387,7 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     # TODO: write description
+    # TODO: Make sure we can't make two identical mappings
     async def create_role_mapping(self, interaction: discord.Interaction):
         assert interaction.guild_id
         config_channel_id = await self.bot.db.get_setting(
@@ -402,5 +418,16 @@ class RoleSyncHandler(commands.Cog):
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
     print("\tcogs.role_sync_handler begin loading")
+    role_mappings = await bot.db.get_all_role_configs()
+    for mapping in role_mappings:
+        view = RoleConfigView(bot.db, mapping)
+        print(
+            (
+                f"\t\tloading mapping in guild:{mapping.guild_id} | "
+                f"for discord: {mapping.discord_role_id}, external: "
+                f"{mapping.role_id}"
+            )
+        )
+        bot.add_view(view)
 
     await bot.add_cog(RoleSyncHandler(bot))

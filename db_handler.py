@@ -189,7 +189,8 @@ class DBHandler:
             drink_name (str): The name of the drink to add.
 
         Throws:
-            ValueError: If there is already a drink with that name in the guild.
+            ValueError: If there is already a drink with that
+                        name in the guild.
         """
         drink_check_query = """
             SELECT * FROM drink_options
@@ -556,10 +557,10 @@ class DBHandler:
         if not role_config:
             return None
         return RoleMapping(
-            message_id,
             str(role_config["role_id"]),
             int(role_config["discord_role_id"]),
             int(role_config["guild_id"]),
+            message_id,
         )
 
     async def get_all_role_configs(self) -> list[RoleMapping]:
@@ -570,7 +571,7 @@ class DBHandler:
             list[RoleMapping]: A list of role mappings.
         """
         get_config_message_query = """
-            SELECT message_id, role_id, discord_role_id
+            SELECT message_id, role_id, discord_role_id, guild_id
             FROM role_configs
         """
         config_messages = await self._execute_multiple_read_query(
@@ -588,10 +589,10 @@ class DBHandler:
                     return return_list
                 return_list.append(
                     RoleMapping(
-                        message["message_id"],
                         message["role_id"],
                         message["discord_role_id"],
                         message["guild_id"],
+                        message["message_id"],
                     )
                 )
         return return_list
@@ -624,10 +625,10 @@ class DBHandler:
                     return return_list
                 return_list.append(
                     RoleMapping(
-                        message["message_id"],
                         message["role_id"],
                         message["discord_role_id"],
                         guild_id,
+                        message["message_id"],
                     )
                 )
         return return_list
