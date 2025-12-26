@@ -219,13 +219,13 @@ class SetupChannelModal(ui.Modal, title="Set up role sync config channel"):
         assert interaction.guild_id
         assert not await self.db.get_setting(
             interaction.guild_id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         assert isinstance(self.channel.component, ui.ChannelSelect)
         _ = await self.db.set_setting(
             interaction.guild_id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
             str(self.channel.component.values[0].id),
         )
@@ -260,7 +260,7 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
         assert isinstance(self.role.component, ui.TextInput)
         channel_id = await self.db.get_setting(
             interaction.guild.id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         if not channel_id:
@@ -308,7 +308,7 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
 
 
 @final
-class RoleSyncHandler(commands.Cog):
+class RoleSyncConfigHandler(commands.Cog):
     def __init__(self, bot: PanternBot):
         super().__init__()
         self.bot = bot
@@ -317,13 +317,13 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     # TODO: write description
-    async def initialize_role_sync(
+    async def initialize_role_sync_config(
         self, interaction: discord.Interaction
     ) -> None:
         assert interaction.guild_id
         config_channel_id = await self.bot.db.get_setting(
             interaction.guild_id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         if config_channel_id:
@@ -353,14 +353,14 @@ class RoleSyncHandler(commands.Cog):
         assert interaction.guild
         old_channel_id = await self.bot.db.get_setting(
             interaction.guild.id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         assert old_channel_id
 
         await self.bot.db.remove_setting(
             interaction.guild.id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         mappings: list[RoleMapping] = await self.bot.db.get_guild_role_configs(
@@ -392,12 +392,12 @@ class RoleSyncHandler(commands.Cog):
         assert interaction.guild_id
         config_channel_id = await self.bot.db.get_setting(
             interaction.guild_id,
-            CogSetting.ROLE_SYNC_HANDLER,
+            CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
         if not config_channel_id:
             _ = await interaction.response.send_message(
-                "Please run /initialize_role_sync to set up the bot",
+                "Please run /initialize_role_sync_config to set up the bot",
                 ephemeral=True,
             )
             return
@@ -410,6 +410,8 @@ class RoleSyncHandler(commands.Cog):
                 ),
                 ephemeral=True,
             )
+            return
+
         _ = await interaction.response.send_modal(AddRoleConfig(self.bot.db))
 
 
@@ -417,7 +419,7 @@ class RoleSyncHandler(commands.Cog):
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
-    print("\tcogs.role_sync_handler begin loading")
+    print("\tcogs.role_sync_config_handler begin loading")
     role_mappings = await bot.db.get_all_role_configs()
     for mapping in role_mappings:
         view = RoleConfigView(bot.db, mapping)
@@ -430,4 +432,4 @@ async def setup(bot: PanternBot) -> None:
         )
         bot.add_view(view)
 
-    await bot.add_cog(RoleSyncHandler(bot))
+    await bot.add_cog(RoleSyncConfigHandler(bot))
