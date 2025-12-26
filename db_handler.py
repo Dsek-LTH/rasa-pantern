@@ -418,7 +418,7 @@ class DBHandler:
                 res.append((tally["message_id"], tally["guild_id"]))
         return res
 
-    async def create_tally(self, message_id: int, guild_id: int):
+    async def create_tally(self, message_id: int, guild_id: int) -> None:
         """
         Creates a tally in the database
 
@@ -433,7 +433,7 @@ class DBHandler:
         """
         await self._execute_query(create_tally_query, (message_id, guild_id))
 
-    async def remove_tally(self, message_id: int):
+    async def remove_tally(self, message_id: int) -> None:
         """
         Removes a tally from the database (for example when it's completed).
 

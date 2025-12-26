@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 from typing import final, override
 
@@ -34,7 +36,7 @@ class ChooseDrinkView(discord.ui.View):
     @classmethod
     async def create(
         cls, message_id: int, guild_id: int, db: db_handler.DBHandler
-    ):
+    ) -> ChooseDrinkView:
         drink_list = await db.get_drink_option_list(guild_id)
         return ChooseDrinkView(message_id, guild_id, drink_list, db)
 
@@ -131,7 +133,7 @@ class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
 
 @final
 class ShowFurtherTallyView(discord.ui.View):
-    def __init__(self, tally: dict[str, list[int]]):
+    def __init__(self, tally: dict[str, list[int]]) -> None:
         self.tally = tally
         super().__init__()
 
@@ -140,7 +142,7 @@ class ShowFurtherTallyView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         _button: discord.ui.Button[typing.Self],
-    ):
+    ) -> None:
         if not interaction.guild:
             _ = await interaction.response.send_message(
                 "Could not find guild, please contact an admin"
