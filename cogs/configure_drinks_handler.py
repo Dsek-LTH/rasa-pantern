@@ -291,7 +291,6 @@ def _get_drink_string(drink_list: list[str]) -> str:
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
-    print("\tcogs.configure_drinks_handler begin loading")
     print("\t\tloading config from database:")
     # Holds guild_id and a string id with <channel_id>|<message_id>
     settings = await bot.db.get_settings(

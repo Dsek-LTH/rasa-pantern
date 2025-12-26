@@ -51,6 +51,7 @@ class PanternBot(commands.Bot):
         ]
         for extension in late_load_extensions:
             try:
+                print(f"\t{extension} begin loading")
                 await bot.load_extension(extension)
                 print(f"\t{extension} loaded")
             except Exception:
@@ -80,6 +81,7 @@ class PanternBot(commands.Bot):
         ]
         for extension in early_load_extensions:
             try:
+                print(f"\t{extension} begin loading")
                 await bot.load_extension(extension)
                 print(f"\t{extension} loaded")
             except Exception:

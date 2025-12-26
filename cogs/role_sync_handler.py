@@ -21,5 +21,4 @@ class RoleSyncHandler(commands.Cog):
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
-    print("\tcogs.role_sync_handler begin loading")
     await bot.add_cog(RoleSyncHandler(bot))

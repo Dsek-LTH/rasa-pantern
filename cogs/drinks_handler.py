@@ -252,7 +252,6 @@ class DrinkHandler(commands.Cog):
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
-    print("\tcogs.drinks_handler begin loading")
     print("\t\tloading tallies from database:")
     tallies = await bot.db.get_all_tallies()
     for message_id, guild_id in tallies:
