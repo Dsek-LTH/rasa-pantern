@@ -34,6 +34,32 @@ class PanternBot(commands.Bot):
             activity=discord.Game(name="Blockbattle"),
         )
 
+    @override
+    async def setup_hook(self) -> None:
+        # Do any data processing to get data into memory here:
+
+        # Load cogs:
+        print("loading cogs:")
+        early_load_extensions = [
+            "cogs.drinks_handler",
+            "cogs.role_sync_handler",
+        ]
+        for extension in early_load_extensions:
+            try:
+                print(f"\t{extension} begin loading")
+                await bot.load_extension(extension)
+                print(f"\t{extension} loaded")
+            except Exception:
+                print(f"Failed to load extension {extension}.")
+                traceback.print_exc()
+
+        print("done loading cogs")
+
+        # Sync app commands with Discord:
+        # await self.tree.sync()
+        # self.tree.copy_global_to(guild=TEST_GUILD)
+        # await self.tree.sync(guild=TEST_GUILD)
+
     async def on_ready(self) -> None:
         # login, probably want to log more info here
         if self.user is None:
@@ -48,6 +74,7 @@ class PanternBot(commands.Bot):
         print("Loading late cogs:")
         late_load_extensions = [
             "cogs.configure_drinks_handler",
+            "cogs.role_sync_config_handler",
         ]
         for extension in late_load_extensions:
             try:
@@ -68,32 +95,6 @@ class PanternBot(commands.Bot):
         except Exception as e:
             print(f"Failed to sync commands: {e}")
         print("------")
-
-    @override
-    async def setup_hook(self) -> None:
-        # Do any data processing to get data into memory here:
-
-        # Load cogs:
-        print("loading cogs:")
-        early_load_extensions = [
-            "cogs.drinks_handler",
-            "cogs.role_sync_config_handler",
-        ]
-        for extension in early_load_extensions:
-            try:
-                print(f"\t{extension} begin loading")
-                await bot.load_extension(extension)
-                print(f"\t{extension} loaded")
-            except Exception:
-                print(f"Failed to load extension {extension}.")
-                traceback.print_exc()
-
-        print("done loading cogs")
-
-        # Sync app commands with Discord:
-        # await self.tree.sync()
-        # self.tree.copy_global_to(guild=TEST_GUILD)
-        # await self.tree.sync(guild=TEST_GUILD)
 
 
 # ------------------------MAIN CODE-----------------------
