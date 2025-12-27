@@ -52,6 +52,7 @@ class DBHandler:
         CREATE TABLE IF NOT EXISTS role_configs (
             "id" INTEGER PRIMARY KEY NOT NULL,
             "message_id" INTEGER UNIQUE NOT NULL,
+            "channel_id" INTEGER NOT NULL,
             "role_id" TEXT UNIQUE NOT NULL,
             "discord_role_id" INTEGER NOT NULL,
             "guild_id" INTEGER NOT NULL,
@@ -453,6 +454,7 @@ class DBHandler:
     async def create_role_config(
         self,
         message_id: int,
+        channel_id: int,
         role_id: str,
         discord_role_id: int,
         guild_id: int,
@@ -463,44 +465,54 @@ class DBHandler:
         Args:
             message_id (int): Id of the message that can change this
                             setting in discord.
-            role_id (str): The LDAP role id for this mapping.
+            channel_id (int): Id of the channel this message is in.
+            role_id (str): The external role id for this mapping.
             discord_role_id (int): The discord role id for this mapping.
             guild_id (int): The guild id for this mapping.
         """
         add_config_message_query = """
             INSERT INTO
-                role_configs (message_id, role_id, discord_role_id, guild_id)
+                role_configs (
+                    message_id,
+                    channel_id,
+                    role_id,
+                    discord_role_id,
+                    guild_id
+                    )
             VALUES
-                (?, ?, ?, ?)
+                (?, ?, ?, ?, ?)
         """
         await self._execute_query(
             add_config_message_query,
-            (message_id, role_id, discord_role_id, guild_id),
+            (message_id, channel_id, role_id, discord_role_id, guild_id),
         )
 
     async def update_role_config(
-        self, message_id: int, discord_role_id: int, role_id: int
+        self,
+        message_id: int,
+        role_id: str,
+        discord_role_id: int,
     ) -> None:
         """
         Update mapping for a role config.
 
         Args:
             message_id (int): message id of the config to update.
+            role_id (str): The external role id for this mapping.
             discord_role_id (int): new discord role to map to this LADP role.
-            guild_id (int): The guild id for this mapping.
 
         """
         update_role_config_query = """
         UPDATE role_configs
         SET
-            discord_role_id = ?,
-            role_id = ?
+            role_id = ?,
+            discord_role_id = ?
         WHERE
             message_id = ?
         """
         await self._execute_query(
             update_role_config_query,
-            (discord_role_id, message_id, role_id),
+            (role_id, discord_role_id, message_id),
         )
 
     async def delete_role_config(self, message_id: int) -> None:
@@ -547,7 +559,12 @@ class DBHandler:
         """
 
         get_config_message_query = """
-            SELECT role_id, discord_role_id, guild_id FROM role_configs
+            SELECT
+                role_id,
+                discord_role_id,
+                guild_id,
+                channel_id
+            FROM role_configs
             WHERE message_id = ?
         """
 
@@ -561,6 +578,7 @@ class DBHandler:
             int(role_config["discord_role_id"]),
             int(role_config["guild_id"]),
             message_id,
+            int(role_config["channel_id"]),
         )
 
     async def get_all_role_configs(self) -> list[RoleMapping]:
@@ -571,7 +589,11 @@ class DBHandler:
             list[RoleMapping]: A list of role mappings.
         """
         get_config_message_query = """
-            SELECT message_id, role_id, discord_role_id, guild_id
+            SELECT message_id,
+                role_id,
+                discord_role_id,
+                guild_id,
+                channel_id
             FROM role_configs
         """
         config_messages = await self._execute_multiple_read_query(
@@ -585,6 +607,7 @@ class DBHandler:
                     or not isinstance(message["role_id"], str)
                     or not isinstance(message["discord_role_id"], int)
                     or not isinstance(message["guild_id"], int)
+                    or not isinstance(message["channel_id"], int)
                 ):
                     return return_list
                 return_list.append(
@@ -593,6 +616,7 @@ class DBHandler:
                         message["discord_role_id"],
                         message["guild_id"],
                         message["message_id"],
+                        message["channel_id"],
                     )
                 )
         return return_list
@@ -607,7 +631,7 @@ class DBHandler:
             list[RoleMapping]: A list of role mappings.
         """
         get_config_message_query = """
-            SELECT message_id, role_id, discord_role_id
+            SELECT message_id, role_id, discord_role_id, channel_id
             FROM role_configs
             WHERE guild_id = ?
         """
@@ -621,6 +645,7 @@ class DBHandler:
                     not isinstance(message["message_id"], int)
                     or not isinstance(message["role_id"], str)
                     or not isinstance(message["discord_role_id"], int)
+                    or not isinstance(message["channel_id"], int)
                 ):
                     return return_list
                 return_list.append(
@@ -629,6 +654,7 @@ class DBHandler:
                         message["discord_role_id"],
                         guild_id,
                         message["message_id"],
+                        message["channel_id"],
                     )
                 )
         return return_list
