@@ -1,5 +1,7 @@
 # -*- coding: UTF-8 -*-
+
 import traceback
+from asyncio import Event
 from os import environ
 from typing import override
 
@@ -25,6 +27,7 @@ class PanternBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+        self.late_load_done: Event = Event()
 
         self.db: db_handler.DBHandler = db_handler.DBHandler(db_file)
         super().__init__(
@@ -54,23 +57,10 @@ class PanternBot(commands.Bot):
                 traceback.print_exc()
 
         print("done loading cogs")
+        _ = self.loop.create_task(self.late_load())
 
-        # Sync app commands with Discord:
-        # await self.tree.sync()
-        # self.tree.copy_global_to(guild=TEST_GUILD)
-        # await self.tree.sync(guild=TEST_GUILD)
-
-    async def on_ready(self) -> None:
-        # login, probably want to log more info here
-        if self.user is None:
-            # Failed login
-            print("WARNING: Failed login, quitting")
-            quit()
-
-        print("-" * 100)
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
-        print("-" * 100)
-
+    async def late_load(self) -> None:
+        await self.wait_until_ready()
         print("Loading late cogs:")
         late_load_extensions = [
             "cogs.configure_drinks_handler",
@@ -85,6 +75,21 @@ class PanternBot(commands.Bot):
                 print(f"Failed to load extension {extension}.")
                 traceback.print_exc()
         print("Done loading late cogs \n")
+        self.late_load_done.set()
+
+    async def on_ready(self) -> None:
+        # login, probably want to log more info here
+        if self.user is None:
+            # Failed login
+            print("WARNING: Failed login, quitting")
+            quit()
+
+        # wait for late load to complete
+        _ = await self.late_load_done.wait()
+
+        print("-" * 100)
+        print(f"Logged in as {self.user} (ID: {self.user.id})")
+        print("-" * 100)
 
         try:
             # We might want to make a command that deals with this instead.
@@ -92,6 +97,11 @@ class PanternBot(commands.Bot):
             # our allowed api calls.
             synced = await bot.tree.sync()
             print(f"Synced {len(synced)} command(s).")
+
+            # Sync app commands with Discord:
+            # await self.tree.sync()
+            # self.tree.copy_global_to(guild=TEST_GUILD)
+            # await self.tree.sync(guild=TEST_GUILD)
         except Exception as e:
             print(f"Failed to sync commands: {e}")
         print("------")
