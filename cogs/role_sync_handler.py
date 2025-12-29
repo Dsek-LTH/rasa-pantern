@@ -54,7 +54,8 @@ class RoleSyncHandler(commands.Cog):
         #    e) set the users roles in the server to this list
         all_roles = guild.roles
         # print(f"all_roles: {all_roles}")
-        new_roles: dict[int, list[int]] = defaultdict(list)
+        new_roles: dict[int, set[int]] = defaultdict(set)
+        old_roles: dict[int, set[int]] = defaultdict(set)
         role_LUT: dict[int, Role] = {}
         roles_to_sync = await self.bot.db.get_guild_role_configs(guild.id)
         # print(f"roles_to_sync: {roles_to_sync}")
@@ -67,15 +68,17 @@ class RoleSyncHandler(commands.Cog):
                 # TODO: add these values into some form of output object so
                 # We can give info back to the user.
                 for user in role.members:
-                    new_roles[user.id].append(role.id)
+                    old_roles[user.id].add(role.id)
+                    new_roles[user.id].add(role.id)
                 continue
 
-            if role.id not in map(lambda r: r.discord_role_id, roles_to_sync):
-                for user in role.members:
-                    # print(
-                    #     f"\t adding role: {role.name} to {user.name}'s list of new roles"
-                    # )
-                    new_roles[user.id].append(role.id)
+            sync_roles = role.id not in map(
+                lambda r: r.discord_role_id, roles_to_sync
+            )
+            for user in role.members:
+                old_roles[user.id].add(role.id)
+                if sync_roles:
+                    new_roles[user.id].add(role.id)
 
         # # WARN: This is debug output please remove
         # for user in new_roles:
@@ -92,13 +95,12 @@ class RoleSyncHandler(commands.Cog):
         # TODO: This needs a major refactoring for speedups and general
         # readability
         for user_id in linked_users:
-            print(f"\nprocessing {guild.get_member(user_id)}")
             for external_role in linked_users[user_id]:
                 role = list(
                     filter(lambda r: r.role_id == external_role, roles_to_sync)
                 )
                 if role != []:
-                    new_roles[user_id].append(role[0].discord_role_id)
+                    new_roles[user_id].add(role[0].discord_role_id)
                     print(
                         f"adding {role[0].role_id} (discord: {guild.get_role(role[0].discord_role_id)}) to {guild.get_member(user_id)}"
                     )
@@ -107,6 +109,11 @@ class RoleSyncHandler(commands.Cog):
 
         for user_id in new_roles:
             # print(f"start setting roles for {guild.get_member(user_id)}")
+            if new_roles[user_id] == old_roles[user_id]:
+                # We don't need to set the roles for a user if we don't need to
+                # change them.
+                continue
+
             member = guild.get_member(user_id)
             if member is None:
                 try:
@@ -140,6 +147,8 @@ class RoleSyncHandler(commands.Cog):
                         f"Stack is as follows {e}\n"
                     )
                 )
+
+        print("sync done")
 
     @tasks.loop(hours=24)
     async def sync_task(self) -> None:
