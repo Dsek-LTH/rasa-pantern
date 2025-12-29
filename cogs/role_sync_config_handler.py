@@ -485,7 +485,7 @@ async def setup(bot: PanternBot) -> None:
 
         print(
             (
-                f"\t\tloading mapping in guild:{guild.name} | "
+                f"\t\tloading mapping in guild: {guild.name} | "
                 f"for discord role id: {mapping.discord_role_id}, external: "
                 f"{mapping.role_id}"
             )
