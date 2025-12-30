@@ -2,7 +2,7 @@ FROM python:3.13-alpine3.23
 
 
 #TODO: update uv to a later version (or redo the entire container to use uv only and not python as uv can handle installing python itself)
-RUN mkdir -p /app/cogs && mkdir /app/.venv && apk add --no-cache sqlite=~3.51 && apk add --no-cache uv=~0.9 
+RUN mkdir -p /app/cogs && mkdir /app/.venv && mkdir /app/db_handling && apk add --no-cache sqlite=~3.51 && apk add --no-cache uv=~0.9
 
 WORKDIR /app
 
@@ -22,18 +22,20 @@ ENV UV_NO_CACHE=1
 # Compile everything to bytecode
 ENV UV_COMPILE_BYTECODE=1
 
-LABEL se.dsek.volumes.mountpoint="/app/db.sqlite"
-LABEL se.dsek.volumes.description="Put runtime database here"
+LABEL se.dsek.volumes.mountpoint="/app/db/"
+LABEL se.dsek.volumes.description="Mount folder with runtime database here."
 LABEL se.dsek.env.required="TOKEN, DB_FILE"
 LABEL se.dsek.env.token.description="Discord bot token"
-LABEL se.dsek.env.db_file.description="Database file (default is db.sqlite, if you change this also change mount path"
+LABEL se.dsek.env.db_file.description="Database file search path (sane default is db/db.sqlite, if you change this also change mount path"
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev 
 
 COPY ./*.py ./
+COPY ./db_handling/*.py ./db_handling/
 COPY ./cogs/*.py ./cogs/
-RUN uv sync --locked --no-editable --no-dev && chmod -R a+r /app
+
+RUN uv sync --locked --no-editable --no-dev && chmod -R g+r /app
 
 USER appuser
 CMD [ "uv", "run", "/app/main.py"]
