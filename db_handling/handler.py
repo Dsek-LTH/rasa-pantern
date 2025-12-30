@@ -1,9 +1,11 @@
 import asyncio
+import re
 from typing import final
 
-from db_handling import postgres_backend, sqlite_backend
-from db_handling.abc import Database
 from helpers import CogSetting, RoleMapping
+
+from . import postgres_backend, sqlite_backend
+from .abc import Database
 
 
 @final
@@ -12,67 +14,95 @@ class DBHandler:
         self.db = db
 
     async def create_tables(self) -> None:
+        is_postgres = isinstance(self.db, postgres_backend.PostresqlHandler)
+
         """Initialize database if it doesn't exist"""
         create_drinks_table = """
         CREATE TABLE IF NOT EXISTS drink_options (
-            "id" INTEGER PRIMARY KEY NOT NULL,
-            "guild_id" INTEGER NOT NULL,
-            "name" TEXT NOT NULL,
+            id INTEGER PRIMARY KEY NOT NULL,
+            guild_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
             UNIQUE(guild_id, name)
         );
         """
-        await self.db.execute_query(create_drinks_table)
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_drinks_table)
+        )
         print("created drinks table")
 
         create_drunk_table = """
         CREATE TABLE IF NOT EXISTS drunk_drinks (
-            "id" INTEGER PRIMARY KEY NOT NULL,
-            "guild_id" INTEGER NOT NULL,
-            "message_id" INTEGER NOT NULL,
-            "user_id" INTEGER NOT NULL,
-            "name" TEXT NOT NULL,
+            id INTEGER PRIMARY KEY NOT NULL,
+            guild_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
             UNIQUE(guild_id, message_id, user_id)
         );
         """
-        await self.db.execute_query(create_drunk_table)
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_drunk_table)
+        )
         print("created drunk_table")
 
         create_tallies_table = """
         CREATE TABLE IF NOT EXISTS tallies (
-            "id" INTEGER PRIMARY KEY NOT NULL,
-            "guild_id" INTEGER NOT NULL,
-            "message_id" INTEGER UNIQUE NOT NULL
+            id INTEGER PRIMARY KEY NOT NULL,
+            guild_id INTEGER NOT NULL,
+            message_id INTEGER UNIQUE NOT NULL
         );
         """
-        await self.db.execute_query(create_tallies_table)
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_tallies_table)
+        )
         print("created tallies table")
 
         create_role_config_table = """
         CREATE TABLE IF NOT EXISTS role_configs (
-            "id" INTEGER PRIMARY KEY NOT NULL,
-            "message_id" INTEGER UNIQUE NOT NULL,
-            "channel_id" INTEGER NOT NULL,
-            "role_id" TEXT UNIQUE NOT NULL,
-            "discord_role_id" INTEGER NOT NULL,
-            "guild_id" INTEGER NOT NULL,
+            id INTEGER PRIMARY KEY NOT NULL,
+            message_id INTEGER UNIQUE NOT NULL,
+            channel_id INTEGER NOT NULL,
+            role_id TEXT UNIQUE NOT NULL,
+            discord_role_id INTEGER NOT NULL,
+            guild_id INTEGER NOT NULL,
             UNIQUE(discord_role_id, role_id)
         );
         """
-        await self.db.execute_query(create_role_config_table)
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_role_config_table)
+        )
         print("created role config table")
 
         create_settings_table = """
         CREATE TABLE IF NOT EXISTS settings (
-            "id" INTEGER PRIMARY KEY NOT NULL,
-            "guild_id" INTEGER NOT NULL,
-            "cog" INTEGER NOT NULL,
-            "config_name" TEXT NOT NULL,
-            "value" TEXT NOT NULL,
+            id INTEGER PRIMARY KEY NOT NULL,
+            guild_id INTEGER NOT NULL,
+            cog INTEGER NOT NULL,
+            config_name TEXT NOT NULL,
+            value TEXT NOT NULL,
             UNIQUE(guild_id, cog, config_name)
         );
         """
-        await self.db.execute_query(create_settings_table)
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_settings_table)
+        )
         print("created settings table")
+
+    def fix_postgres_fields(self, is_postgres: bool, query: str) -> str:
+        if is_postgres:
+            query = re.sub(
+                r"\bINTEGER\s+PRIMARY\s+KEY(?:\s+AUTOINCREMENT)?\b",
+                "SERIAL PRIMARY KEY",
+                query,
+                flags=re.IGNORECASE,
+            )
+            query = re.sub(
+                r"\bINTEGER\b",
+                "BIGINT",
+                query,
+                flags=re.IGNORECASE,
+            )
+        return query
 
     # ------------------------------------------------------
 
@@ -729,7 +759,7 @@ class DBHandler:
         )
 
 
-if __name__ == "__main__":
+async def main():
     print("Creating tables if they don't exist")
 
     from os import getenv
@@ -746,10 +776,8 @@ if __name__ == "__main__":
 
     if db_name and db_username and db_password and db_host:
         print("Found and connected to postgres database")
-        db = asyncio.run(
-            postgres_backend.PostresqlHandler.create(
-                db_name, db_username, db_password, db_host
-            )
+        db = await postgres_backend.PostresqlHandler.create(
+            db_name, db_username, db_password, db_host
         )
     elif db_file:
         print("Found and loaded sqlite database.")
@@ -765,8 +793,12 @@ if __name__ == "__main__":
         exit()
 
     dbHandler = DBHandler(db)
-    asyncio.run(dbHandler.create_tables())
+    await dbHandler.create_tables()
     if isinstance(dbHandler.db, postgres_backend.PostresqlHandler):
         print("Finished setting up postgress server.")
     elif isinstance(dbHandler.db, sqlite_backend.SqliteHandler):
         print("Finished setting up sqlite database.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

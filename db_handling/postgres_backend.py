@@ -35,7 +35,6 @@ class PostresqlHandler(Database):
     ) -> None:
         assert self.pool
         async with self.pool.acquire() as conn:
-            print(f"type of con: {type(conn)}")
             async with conn.transaction():
                 try:
                     await conn.execute(self.translate_sql(query), *vars)
@@ -54,9 +53,7 @@ class PostresqlHandler(Database):
                     if row is None:
                         return None
                     # TODO: make this one line and remove var
-                    d = cast(dict[str, str | int], dict(row))
-                    print(d)
-                    return d
+                    return cast(dict[str, str | int], dict(row))
                 except asyncpg.PostgresError as e:
                     print(f"DB error: {e} occured")
 
@@ -71,9 +68,9 @@ class PostresqlHandler(Database):
                     if not rows:
                         return None
                     # TODO: make this one line and remove var
-                    d = [cast(dict[str, str | int], dict(row)) for row in rows]
-                    print(d)
-                    return d
+                    return [
+                        cast(dict[str, str | int], dict(row)) for row in rows
+                    ]
                 except asyncpg.PostgresError as e:
                     print(f"DB error: {e} occured")
 
@@ -86,7 +83,4 @@ class PostresqlHandler(Database):
             count += 1
             return f"${count}"
 
-        # TODO: make this oneline and remove debug
-        output = re.sub("\\?", replacer, query)
-        print(output)
-        return output
+        return re.sub("\\?", replacer, query)

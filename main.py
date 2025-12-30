@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 
-import asyncio
 import traceback
 from asyncio import Event
 from os import environ, getenv
@@ -35,14 +34,24 @@ class PanternBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+        self.db: DBHandler
         self.late_load_done: Event = Event()
+
+        super().__init__(
+            intents=intents,
+            command_prefix=command_prefix,
+            description="D sektionens egna bot!",
+            activity=discord.Game(name="Blockbattle"),
+        )
+
+    @override
+    async def setup_hook(self) -> None:
+        # Do any data processing to get data into memory here:
 
         if db_name and db_username and db_password and db_host:
             print("Found and connected to postgres database")
-            db = asyncio.run(
-                PostresqlHandler.create(
-                    db_name, db_username, db_password, db_host
-                )
+            db = await PostresqlHandler.create(
+                db_name, db_username, db_password, db_host
             )
         elif db_file:
             print("Found and loaded sqlite database.")
@@ -56,18 +65,7 @@ class PanternBot(commands.Bot):
                 )
             )
             exit()
-        self.db: DBHandler = DBHandler(db)
-
-        super().__init__(
-            intents=intents,
-            command_prefix=command_prefix,
-            description="D sektionens egna bot!",
-            activity=discord.Game(name="Blockbattle"),
-        )
-
-    @override
-    async def setup_hook(self) -> None:
-        # Do any data processing to get data into memory here:
+        self.db = DBHandler(db)
 
         # Load cogs:
         print("loading cogs:")

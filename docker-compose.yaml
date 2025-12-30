@@ -7,7 +7,7 @@ services:
     restart: on-failure:1
     environment:
       POSTGRES_USER: cpu
-      POSTGRES_PASSWORD: rasa-pantern
+      POSTGRES_PASSWORD: <DB-PASSWORD>
       POSTGRES_DB: discord
     networks:
       - backend
@@ -15,17 +15,19 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   rasa-pantern:
-    image: 478e0461c385
+    image: 6fcfd022b54f
     container_name: rasa-pantern
+    # Setup command:
+    # command: uv run -m db_handling.handler
     restart: on-failure:1
     depends_on:
       - postgres
     environment:
       DB_HOST: postgres
       DB_USERNAME: cpu
-      DB_PASSWORD: rasa-pantern
+      DB_PASSWORD: <DB-PASSWORD>
       DB_NAME: discord
-      TOKEN: supersecrettoken
+      TOKEN: "<TOKEN>"
     networks:
       - backend
 
