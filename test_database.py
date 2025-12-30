@@ -1,9 +1,12 @@
 import asyncio
 
 from db_handling.handler import DBHandler
+from db_handling.sqlite_backend import SqliteHandler
 
 if __name__ == "__main__":
-    db = DBHandler("testing_db.sqlite")
+    db_backend = SqliteHandler("testing_db.sqlite")
+    db = DBHandler(db_backend)
+
     asyncio.run(db.create_tables())
     if not asyncio.run(db.get_drink_option_list(-1)) == []:
         print("drink list not empty testing might be fucked")

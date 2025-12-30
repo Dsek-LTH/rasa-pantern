@@ -6,17 +6,14 @@ import asqlite
 from db_handling.abc import Database
 
 
-class Sqlite_handler(Database):
+class SqliteHandler(Database):
+    def __init__(self, db_file: str):
+        self.db_file: str = db_file
+
     @override
     async def execute_query(
         self, query: str, vars: tuple[str | int, ...] = ()
     ) -> None:
-        """Execute a query in the database.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-        """
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:
@@ -29,17 +26,6 @@ class Sqlite_handler(Database):
     async def execute_read_query(
         self, query: str, vars: tuple[str | int, ...] = ()
     ) -> dict[str, str | int] | None:
-        """Execute a query in the database and parses the first found entry
-        into a dictionary.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-
-        Returns:
-            dict: Key value pairs with data from the query results.
-                  form: {field_name: value}
-        """
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:
@@ -57,16 +43,6 @@ class Sqlite_handler(Database):
     async def execute_multiple_read_query(
         self, query: str, vars: tuple[str | int, ...] = ()
     ) -> list[dict[str, str | int]] | None:
-        """Execute a query in the database and parses all found entries into
-        a list of dictionaries.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-
-        Returns:
-            list[dict]: list of key value pairs with data from the query
-                        results. form: [{field_name: value}]"""
         async with asqlite.connect(self.db_file) as conn:
             async with conn.cursor() as cursor:
                 try:

@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: on-failure:1
+    environment:
+      POSTGRES_USER: cpu
+      POSTGRES_PASSWORD: rasa-pantern
+      POSTGRES_DB: discord
+    networks:
+      - backend
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rasa-pantern:
+    image: 478e0461c385
+    container_name: rasa-pantern
+    restart: on-failure:1
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_USERNAME: cpu
+      DB_PASSWORD: rasa-pantern
+      DB_NAME: discord
+      TOKEN: supersecrettoken
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+

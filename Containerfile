@@ -24,9 +24,16 @@ ENV UV_COMPILE_BYTECODE=1
 
 LABEL se.dsek.volumes.mountpoint="/app/db/"
 LABEL se.dsek.volumes.description="Mount folder with runtime database here."
-LABEL se.dsek.env.required="TOKEN, DB_FILE"
+LABEL se.dsek.env.required="TOKEN"
+LABEL se.dsek.env.sqlite="DB_FILE"
+LABEL se.dsek.env.postgresql="DB_NAME, DB_USERNAME, DB_PASSWORD, DB_HOST"
+LABEL se.dsek.env.required.description="In addition to this/these variables, one database provider also has to have set environment variables."
 LABEL se.dsek.env.token.description="Discord bot token"
-LABEL se.dsek.env.db_file.description="Database file search path (sane default is db/db.sqlite, if you change this also change mount path"
+LABEL se.dsek.env.sqlite.db_file.description="Database file search path (sane default is db/db.sqlite, if you change this also change mount path"
+LABEL se.dsek.env.postgresql.db_name.description="Name of the postgresql database to connect to."
+LABEL se.dsek.env.postgresql.db_username.description="Username for the postgreqsl database"
+LABEL se.dsek.env.postgresql.db_password.description="Password for the postgresql database"
+LABEL se.dsek.env.postgresql.db_host.description="Host ip/hostname for the postgresql database"
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev 

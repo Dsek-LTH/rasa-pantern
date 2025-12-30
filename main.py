@@ -1,8 +1,9 @@
 # -*- coding: UTF-8 -*-
 
+import asyncio
 import traceback
 from asyncio import Event
-from os import environ
+from os import environ, getenv
 from typing import override
 
 import discord
@@ -10,10 +11,17 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 from db_handling.handler import DBHandler
+from db_handling.postgres_backend import PostresqlHandler
+from db_handling.sqlite_backend import SqliteHandler
 
 _ = load_dotenv()
 token = environ["TOKEN"]
-db_file = environ["DB_FILE"]
+db_file = getenv("DB_FILE")
+db_name = getenv("DB_NAME")
+db_username = getenv("DB_USERNAME")
+db_password = getenv("DB_PASSWORD")
+db_host = getenv("DB_HOST")
+
 
 # -----------------------STATIC VARS----------------------
 # test guild, discord bot testing grounds
@@ -29,7 +37,27 @@ class PanternBot(commands.Bot):
         intents.message_content = True
         self.late_load_done: Event = Event()
 
-        self.db: DBHandler = DBHandler(db_file)
+        if db_name and db_username and db_password and db_host:
+            print("Found and connected to postgres database")
+            db = asyncio.run(
+                PostresqlHandler.create(
+                    db_name, db_username, db_password, db_host
+                )
+            )
+        elif db_file:
+            print("Found and loaded sqlite database.")
+            db = SqliteHandler(db_file)
+        else:
+            print(
+                (
+                    "ERROR: No database connection found, "
+                    "please fill in environment variables "
+                    "for at least one database provider."
+                )
+            )
+            exit()
+        self.db: DBHandler = DBHandler(db)
+
         super().__init__(
             intents=intents,
             command_prefix=command_prefix,
@@ -108,6 +136,7 @@ class PanternBot(commands.Bot):
 
 
 # ------------------------MAIN CODE-----------------------
-bot = PanternBot(command_prefix="!")
 if __name__ == "__main__":
+    print("Starting bot")
+    bot = PanternBot(command_prefix="!")
     bot.run(token)  # Råsa Pantern

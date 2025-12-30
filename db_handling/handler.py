@@ -1,20 +1,15 @@
 import asyncio
 from typing import final
 
-from db_handling import sqlite_backend
+from db_handling import postgres_backend, sqlite_backend
 from db_handling.abc import Database
 from helpers import CogSetting, RoleMapping
 
 
 @final
 class DBHandler:
-    def __init__(self, db_file: str, use_sqlite: bool = True) -> None:
-        self.db_file = db_file
-        self.db: Database
-        if use_sqlite:
-            self.db = sqlite_backend.Sqlite_handler(db_file)
-        else:
-            pass
+    def __init__(self, db: Database) -> None:
+        self.db = db
 
     async def create_tables(self) -> None:
         """Initialize database if it doesn't exist"""
@@ -78,81 +73,6 @@ class DBHandler:
         """
         await self.db.execute_query(create_settings_table)
         print("created settings table")
-
-    # async def _execute_query(
-    #     self, query: str, vars: tuple[str | int, ...] = ()
-    # ) -> None:
-    #     """Execute a query in the database.
-    #
-    #     Args:
-    #         query (str): The SQL query string.
-    #         vars (tuple): The query string fill in vars.
-    #     """
-    #     async with asqlite.connect(self.db_file) as conn:
-    #         async with conn.cursor() as cursor:
-    #             try:
-    #                 _ = await cursor.execute(query, vars)
-    #                 await conn.commit()
-    #             except Error as e:
-    #                 print(f"the error {e} occured")
-    #
-    # async def _execute_read_query(
-    #     self, query: str, vars: tuple[str | int, ...] = ()
-    # ) -> dict[str, str | int] | None:
-    #     """Execute a query in the database and parses the first found entry
-    #     into a dictionary.
-    #
-    #     Args:
-    #         query (str): The SQL query string.
-    #         vars (tuple): The query string fill in vars.
-    #
-    #     Returns:
-    #         dict: Key value pairs with data from the query results.
-    #               form: {field_name: value}
-    #     """
-    #     async with asqlite.connect(self.db_file) as conn:
-    #         async with conn.cursor() as cursor:
-    #             try:
-    #                 _ = await cursor.execute(query, vars)
-    #                 result = await cursor.fetchone()
-    #                 if not result:
-    #                     return None
-    #                 pairs = {}
-    #                 for key in result.keys():
-    #                     pairs[key] = result.__getitem__(key)
-    #                 return pairs
-    #             except Error as e:
-    #                 print(f"The error '{e}' occurred")
-    #
-    # async def _execute_multiple_read_query(
-    #     self, query: str, vars: tuple[str | int, ...] = ()
-    # ) -> list[dict[str, str | int]] | None:
-    #     """Execute a query in the database and parses all found entries into
-    #     a list of dictionaries.
-    #
-    #     Args:
-    #         query (str): The SQL query string.
-    #         vars (tuple): The query string fill in vars.
-    #
-    #     Returns:
-    #         list[dict]: list of key value pairs with data from the query
-    #                     results. form: [{field_name: value}]"""
-    #     async with asqlite.connect(self.db_file) as conn:
-    #         async with conn.cursor() as cursor:
-    #             try:
-    #                 _ = await cursor.execute(query, vars)
-    #                 result = await cursor.fetchall()
-    #                 if not result:
-    #                     return None
-    #                 output = []
-    #                 for entry in result:
-    #                     pairs = {}
-    #                     for key in entry.keys():
-    #                         pairs[key] = entry.__getitem__(key)
-    #                     output.append(pairs)
-    #                 return output
-    #             except Error as e:
-    #                 print(f"The error '{e}' occurred")
 
     # ------------------------------------------------------
 
@@ -812,12 +732,41 @@ class DBHandler:
 if __name__ == "__main__":
     print("Creating tables if they don't exist")
 
-    from os import environ
+    from os import getenv
 
     from dotenv import load_dotenv
 
     _ = load_dotenv()
-    db_file = environ["DB_FILE"]
 
-    dbHandler = DBHandler(db_file)
+    db_name = getenv("DB_NAME")
+    db_username = getenv("DB_USERNAME")
+    db_password = getenv("DB_PASSWORD")
+    db_host = getenv("DB_HOST")
+    db_file = getenv("DB_FILE")
+
+    if db_name and db_username and db_password and db_host:
+        print("Found and connected to postgres database")
+        db = asyncio.run(
+            postgres_backend.PostresqlHandler.create(
+                db_name, db_username, db_password, db_host
+            )
+        )
+    elif db_file:
+        print("Found and loaded sqlite database.")
+        db = sqlite_backend.SqliteHandler(db_file)
+    else:
+        print(
+            (
+                "ERROR: No database connection found, "
+                "please fill in environment variables "
+                "for at least one database provider."
+            )
+        )
+        exit()
+
+    dbHandler = DBHandler(db)
     asyncio.run(dbHandler.create_tables())
+    if isinstance(dbHandler.db, postgres_backend.PostresqlHandler):
+        print("Finished setting up postgress server.")
+    elif isinstance(dbHandler.db, sqlite_backend.SqliteHandler):
+        print("Finished setting up sqlite database.")
