@@ -38,26 +38,22 @@ class RoleSyncHandler(commands.Cog):
 
     async def _sync(self, guild: Guild) -> None:
         print("starting sync")
-        # TODO: plan of action:
-        # 1. go through all roles in server and store those that aren't set to
-        #    sync in our database
-        # 2. go through all these roles and store which users have them.
-        #    Dict[Guild_id : Dict[role_id : List[user]]]
-        # 3. get users from openidC provicer and put in dict mapping id to list
-        #    of roles. Dict[user : List[role]]
-        # 4. Get discord id mapping to other id from Janus:
-        #    Dict[openid_id : discord_id]
-        # 5. Go user by user and:
-        #    b) get all openid role names
-        #    c) get all discord roles mapped to the openid roles
-        #    d) combine the two lists into one list of role objects
-        #    e) set the users roles in the server to this list
+
+        if self.bot.get_guild(guild.id) is None:
+            guild = await self.bot.fetch_guild(guild.id)
+
+        # Make sure our users are cached as cheaply as possible:
+        if not guild.chunked:
+            # WARN: This is very intensive and may take a long time for very
+            # big servers (thankfully ours doesn't count as one).
+            _ = await guild.chunk()
+
         all_roles = guild.roles
-        # print(f"all_roles: {all_roles}")
         new_roles: dict[int, set[int]] = defaultdict(set)
         old_roles: dict[int, set[int]] = defaultdict(set)
         role_LUT: dict[int, Role] = {}
         roles_to_sync = await self.bot.db.get_guild_role_configs(guild.id)
+
         # print(f"roles_to_sync: {roles_to_sync}")
         # Make a list of all non syncing roles
         for role in all_roles:
@@ -93,7 +89,7 @@ class RoleSyncHandler(commands.Cog):
 
         # append syncing roles
         # TODO: This needs a major refactoring for speedups and general
-        # readability
+        # readability, it's a tripple nested for loop for gods sake...
         for user_id in linked_users:
             for external_role in linked_users[user_id]:
                 role = list(
@@ -108,12 +104,14 @@ class RoleSyncHandler(commands.Cog):
         print()
 
         for user_id in new_roles:
-            # print(f"start setting roles for {guild.get_member(user_id)}")
             if new_roles[user_id] == old_roles[user_id]:
                 # We don't need to set the roles for a user if we don't need to
-                # change them.
+                # change them, and thus we don't need to load them either
                 continue
 
+            # This should never be required, but make sure that we actually
+            # have a user object to work on even if we cache all guild members
+            # in the beginning of this function.
             member = guild.get_member(user_id)
             if member is None:
                 try:
@@ -136,13 +134,16 @@ class RoleSyncHandler(commands.Cog):
                     roles=[role_LUT[role_id] for role_id in new_roles[user_id]]
                 )
             except discord.Forbidden as e:
+                user_role_list = [
+                    role_LUT[role_id].name for role_id in new_roles[user_id]
+                ]
                 print(
                     (
                         "\n ERROR: "
                         f"a role for user {user_id} "
-                        "is too high to assign trying to skip and continue. "
+                        "is too high to assign, trying to skip and continue. "
                         f"It could be any of the following: "
-                        f"{[role_LUT[role_id].name for role_id in new_roles[user_id]]}"
+                        f"{user_role_list}"
                         " or a role the user already has. "
                         f"Stack is as follows {e}\n"
                     )
