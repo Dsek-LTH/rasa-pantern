@@ -9,7 +9,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-import db_handler
+from db_handling.handler import DBHandler
 
 _ = load_dotenv()
 token = environ["TOKEN"]
@@ -29,7 +29,7 @@ class PanternBot(commands.Bot):
         intents.message_content = True
         self.late_load_done: Event = Event()
 
-        self.db: db_handler.DBHandler = db_handler.DBHandler(db_file)
+        self.db: DBHandler = DBHandler(db_file)
         super().__init__(
             intents=intents,
             command_prefix=command_prefix,

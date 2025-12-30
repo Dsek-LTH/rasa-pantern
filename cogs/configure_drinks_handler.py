@@ -13,7 +13,7 @@ from discord import (
 )
 from discord.ext import commands
 
-import db_handler
+from db_handling.handler import DBHandler
 from helpers import CogSetting
 from main import PanternBot
 
@@ -23,12 +23,12 @@ class ConfigureDrinksView(ui.LayoutView):
         self,
         guild_id: int,
         drink_list: list[str],
-        db: db_handler.DBHandler,
+        db: DBHandler,
     ):
         super().__init__(timeout=None)
         self.guild_id: int = guild_id
         self.drink_list: list[str] = drink_list
-        self.db: db_handler.DBHandler = db
+        self.db: DBHandler = db
         self.message: InteractionMessage | PartialMessage | None = None
 
         self.text: ui.TextDisplay[ConfigureDrinksView] = ui.TextDisplay(
@@ -76,13 +76,13 @@ class ConfigureDrinksView(ui.LayoutView):
         _ = await self.message.edit(view=self)
 
     @classmethod
-    async def create(cls, guild_id: int, db: db_handler.DBHandler):
+    async def create(cls, guild_id: int, db: DBHandler):
         drink_list = await db.get_drink_option_list(guild_id)
         return ConfigureDrinksView(guild_id, drink_list, db)
 
     @classmethod
     async def create_deactivated(
-        cls, message: PartialMessage, guild_id: int, db: db_handler.DBHandler
+        cls, message: PartialMessage, guild_id: int, db: DBHandler
     ):
         drink_list = await db.get_drink_option_list(guild_id)
         view = ConfigureDrinksView(guild_id, drink_list, db)

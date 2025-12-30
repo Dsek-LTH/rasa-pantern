@@ -1,6 +1,6 @@
 import asyncio
 
-from db_handler import DBHandler
+from db_handling.handler import DBHandler
 
 if __name__ == "__main__":
     db = DBHandler("testing_db.sqlite")

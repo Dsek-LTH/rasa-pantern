@@ -2,14 +2,7 @@ from collections import defaultdict
 from typing import final, override
 
 import discord
-from discord import (
-    Guild,
-    Interaction,
-    NotFound,
-    Permissions,
-    Role,
-    app_commands,
-)
+from discord import Guild, Interaction, Permissions, Role, app_commands
 from discord.ext import commands, tasks
 
 from main import PanternBot
@@ -83,7 +76,7 @@ class RoleSyncHandler(commands.Cog):
         #         print(f"\t\t{role_LUT[role]}")
         # # WARN: This is debug output please remove
 
-        # get linked users and their external roles:
+        # TODO: Get linked users and their external roles:
         # (discord_user_id: [external_role_1, external_role_2])
         linked_users: dict[int, list[str]] = {}
 

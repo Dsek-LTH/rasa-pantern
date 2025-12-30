@@ -1,16 +1,20 @@
 import asyncio
-from sqlite3 import Error
 from typing import final
 
-import asqlite
-
+from db_handling import sqlite_backend
+from db_handling.abc import Database
 from helpers import CogSetting, RoleMapping
 
 
 @final
 class DBHandler:
-    def __init__(self, db_file: str) -> None:
+    def __init__(self, db_file: str, use_sqlite: bool = True) -> None:
         self.db_file = db_file
+        self.db: Database
+        if use_sqlite:
+            self.db = sqlite_backend.Sqlite_handler(db_file)
+        else:
+            pass
 
     async def create_tables(self) -> None:
         """Initialize database if it doesn't exist"""
@@ -22,7 +26,7 @@ class DBHandler:
             UNIQUE(guild_id, name)
         );
         """
-        await self._execute_query(create_drinks_table)
+        await self.db.execute_query(create_drinks_table)
         print("created drinks table")
 
         create_drunk_table = """
@@ -35,7 +39,7 @@ class DBHandler:
             UNIQUE(guild_id, message_id, user_id)
         );
         """
-        await self._execute_query(create_drunk_table)
+        await self.db.execute_query(create_drunk_table)
         print("created drunk_table")
 
         create_tallies_table = """
@@ -45,7 +49,7 @@ class DBHandler:
             "message_id" INTEGER UNIQUE NOT NULL
         );
         """
-        await self._execute_query(create_tallies_table)
+        await self.db.execute_query(create_tallies_table)
         print("created tallies table")
 
         create_role_config_table = """
@@ -59,7 +63,7 @@ class DBHandler:
             UNIQUE(discord_role_id, role_id)
         );
         """
-        await self._execute_query(create_role_config_table)
+        await self.db.execute_query(create_role_config_table)
         print("created role config table")
 
         create_settings_table = """
@@ -72,83 +76,83 @@ class DBHandler:
             UNIQUE(guild_id, cog, config_name)
         );
         """
-        await self._execute_query(create_settings_table)
+        await self.db.execute_query(create_settings_table)
         print("created settings table")
 
-    async def _execute_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> None:
-        """Execute a query in the database.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-        """
-        async with asqlite.connect(self.db_file) as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    _ = await cursor.execute(query, vars)
-                    await conn.commit()
-                except Error as e:
-                    print(f"the error {e} occured")
-
-    async def _execute_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> dict[str, str | int] | None:
-        """Execute a query in the database and parses the first found entry
-        into a dictionary.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-
-        Returns:
-            dict: Key value pairs with data from the query results.
-                  form: {field_name: value}
-        """
-        async with asqlite.connect(self.db_file) as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    _ = await cursor.execute(query, vars)
-                    result = await cursor.fetchone()
-                    if not result:
-                        return None
-                    pairs = {}
-                    for key in result.keys():
-                        pairs[key] = result.__getitem__(key)
-                    return pairs
-                except Error as e:
-                    print(f"The error '{e}' occurred")
-
-    async def _execute_multiple_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> list[dict[str, str | int]] | None:
-        """Execute a query in the database and parses all found entries into
-        a list of dictionaries.
-
-        Args:
-            query (str): The SQL query string.
-            vars (tuple): The query string fill in vars.
-
-        Returns:
-            list[dict]: list of key value pairs with data from the query
-                        results. form: [{field_name: value}]"""
-        async with asqlite.connect(self.db_file) as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    _ = await cursor.execute(query, vars)
-                    result = await cursor.fetchall()
-                    if not result:
-                        return None
-                    output = []
-                    for entry in result:
-                        pairs = {}
-                        for key in entry.keys():
-                            pairs[key] = entry.__getitem__(key)
-                        output.append(pairs)
-                    return output
-                except Error as e:
-                    print(f"The error '{e}' occurred")
+    # async def _execute_query(
+    #     self, query: str, vars: tuple[str | int, ...] = ()
+    # ) -> None:
+    #     """Execute a query in the database.
+    #
+    #     Args:
+    #         query (str): The SQL query string.
+    #         vars (tuple): The query string fill in vars.
+    #     """
+    #     async with asqlite.connect(self.db_file) as conn:
+    #         async with conn.cursor() as cursor:
+    #             try:
+    #                 _ = await cursor.execute(query, vars)
+    #                 await conn.commit()
+    #             except Error as e:
+    #                 print(f"the error {e} occured")
+    #
+    # async def _execute_read_query(
+    #     self, query: str, vars: tuple[str | int, ...] = ()
+    # ) -> dict[str, str | int] | None:
+    #     """Execute a query in the database and parses the first found entry
+    #     into a dictionary.
+    #
+    #     Args:
+    #         query (str): The SQL query string.
+    #         vars (tuple): The query string fill in vars.
+    #
+    #     Returns:
+    #         dict: Key value pairs with data from the query results.
+    #               form: {field_name: value}
+    #     """
+    #     async with asqlite.connect(self.db_file) as conn:
+    #         async with conn.cursor() as cursor:
+    #             try:
+    #                 _ = await cursor.execute(query, vars)
+    #                 result = await cursor.fetchone()
+    #                 if not result:
+    #                     return None
+    #                 pairs = {}
+    #                 for key in result.keys():
+    #                     pairs[key] = result.__getitem__(key)
+    #                 return pairs
+    #             except Error as e:
+    #                 print(f"The error '{e}' occurred")
+    #
+    # async def _execute_multiple_read_query(
+    #     self, query: str, vars: tuple[str | int, ...] = ()
+    # ) -> list[dict[str, str | int]] | None:
+    #     """Execute a query in the database and parses all found entries into
+    #     a list of dictionaries.
+    #
+    #     Args:
+    #         query (str): The SQL query string.
+    #         vars (tuple): The query string fill in vars.
+    #
+    #     Returns:
+    #         list[dict]: list of key value pairs with data from the query
+    #                     results. form: [{field_name: value}]"""
+    #     async with asqlite.connect(self.db_file) as conn:
+    #         async with conn.cursor() as cursor:
+    #             try:
+    #                 _ = await cursor.execute(query, vars)
+    #                 result = await cursor.fetchall()
+    #                 if not result:
+    #                     return None
+    #                 output = []
+    #                 for entry in result:
+    #                     pairs = {}
+    #                     for key in entry.keys():
+    #                         pairs[key] = entry.__getitem__(key)
+    #                     output.append(pairs)
+    #                 return output
+    #             except Error as e:
+    #                 print(f"The error '{e}' occurred")
 
     # ------------------------------------------------------
 
@@ -170,7 +174,7 @@ class DBHandler:
             WHERE guild_id = ?;
         """
 
-        drinks = await self._execute_multiple_read_query(
+        drinks = await self.db.execute_multiple_read_query(
             drink_query, (guild_id,)
         )
         # TODO: error handling here if no drinks exist in system?
@@ -199,7 +203,7 @@ class DBHandler:
             AND
                 name = ?;
         """
-        drink_exist_check = await self._execute_read_query(
+        drink_exist_check = await self.db.execute_read_query(
             drink_check_query,
             (
                 guild_id,
@@ -220,7 +224,7 @@ class DBHandler:
                 VALUES
                     (?, ?);
             """
-            await self._execute_query(
+            await self.db.execute_query(
                 drink_create_query,
                 (
                     guild_id,
@@ -244,7 +248,7 @@ class DBHandler:
             AND
                 name = ?;
         """
-        await self._execute_query(
+        await self.db.execute_query(
             drink_remove_query,
             (
                 guild_id,
@@ -288,7 +292,7 @@ class DBHandler:
             AND
                 user_id = ?
         """
-        current_drink = await self._execute_read_query(
+        current_drink = await self.db.execute_read_query(
             current_drink_query, (guild_id, message_id, user_id)
         )
 
@@ -317,7 +321,7 @@ class DBHandler:
                     (?, ?, ?, ?)
             """
 
-        await self._execute_query(
+        await self.db.execute_query(
             drink_add_query,
             (
                 drink_name,
@@ -348,7 +352,7 @@ class DBHandler:
             AND
                 user_id = ?;
         """
-        await self._execute_query(
+        await self.db.execute_query(
             drink_remove_query,
             (
                 guild_id,
@@ -376,7 +380,7 @@ class DBHandler:
             FROM drunk_drinks
             WHERE message_id = ?;
         """
-        drunk_list = await self._execute_multiple_read_query(
+        drunk_list = await self.db.execute_multiple_read_query(
             get_drinks_query, (message_id,)
         )
 
@@ -402,7 +406,7 @@ class DBHandler:
             SELECT message_id, guild_id
             FROM tallies;
         """
-        tallies = await self._execute_multiple_read_query(
+        tallies = await self.db.execute_multiple_read_query(
             get_tally_query,
         )
         res: list[tuple[int, int]] = []
@@ -432,7 +436,7 @@ class DBHandler:
                 (message_id, guild_id)
             VALUES (?, ?);
         """
-        await self._execute_query(create_tally_query, (message_id, guild_id))
+        await self.db.execute_query(create_tally_query, (message_id, guild_id))
 
     async def remove_tally(self, message_id: int) -> None:
         """
@@ -447,7 +451,7 @@ class DBHandler:
             AND
                 message_id = ?
         """
-        await self._execute_query(remove_tally_query, (message_id,))
+        await self.db.execute_query(remove_tally_query, (message_id,))
 
     # ------------------------------------------------------
     # role config system:
@@ -482,7 +486,7 @@ class DBHandler:
             VALUES
                 (?, ?, ?, ?, ?)
         """
-        await self._execute_query(
+        await self.db.execute_query(
             add_config_message_query,
             (message_id, channel_id, role_id, discord_role_id, guild_id),
         )
@@ -510,7 +514,7 @@ class DBHandler:
         WHERE
             message_id = ?
         """
-        await self._execute_query(
+        await self.db.execute_query(
             update_role_config_query,
             (role_id, discord_role_id, message_id),
         )
@@ -526,7 +530,7 @@ class DBHandler:
             DELETE FROM role_configs
             WHERE message_id = ?
         """
-        await self._execute_query(
+        await self.db.execute_query(
             remove_config_message_query,
             (message_id,),
         )
@@ -542,7 +546,7 @@ class DBHandler:
             DELETE FROM role_configs
             WHERE guild_id = ?
         """
-        await self._execute_query(
+        await self.db.execute_query(
             purge_config_message_query,
             (guild_id,),
         )
@@ -568,7 +572,7 @@ class DBHandler:
             WHERE message_id = ?
         """
 
-        role_config = await self._execute_read_query(
+        role_config = await self.db.execute_read_query(
             get_config_message_query, (message_id,)
         )
         if not role_config:
@@ -596,7 +600,7 @@ class DBHandler:
                 channel_id
             FROM role_configs
         """
-        config_messages = await self._execute_multiple_read_query(
+        config_messages = await self.db.execute_multiple_read_query(
             get_config_message_query
         )
         return_list: list[RoleMapping] = []
@@ -635,7 +639,7 @@ class DBHandler:
             FROM role_configs
             WHERE guild_id = ?
         """
-        config_messages = await self._execute_multiple_read_query(
+        config_messages = await self.db.execute_multiple_read_query(
             get_config_message_query, (guild_id,)
         )
         return_list: list[RoleMapping] = []
@@ -681,7 +685,7 @@ class DBHandler:
             VALUES
                 (?, ?, ?, ?)
         """
-        await self._execute_query(
+        await self.db.execute_query(
             set_setting_query,
             (guild_id, cog.value, setting_name, value),
         )
@@ -708,7 +712,7 @@ class DBHandler:
             AND
                 config_name = ?
         """
-        await self._execute_query(
+        await self.db.execute_query(
             update_setting_query,
             (value, guild_id, cog.value, setting_name),
         )
@@ -737,7 +741,7 @@ class DBHandler:
             AND
                 config_name = ?;
         """
-        table_field = await self._execute_read_query(
+        table_field = await self.db.execute_read_query(
             get_setting_query, (guild_id, cog.value, setting_name)
         )
         if not table_field:
@@ -765,7 +769,7 @@ class DBHandler:
             AND
                 cog = ?
         """
-        db_return = await self._execute_multiple_read_query(
+        db_return = await self.db.execute_multiple_read_query(
             get_setting_query, (setting_name, cog.value)
         )
         if not db_return:
@@ -795,7 +799,7 @@ class DBHandler:
             AND
                 config_name = ?
         """
-        await self._execute_query(
+        await self.db.execute_query(
             remove_setting_query,
             (
                 guild_id,

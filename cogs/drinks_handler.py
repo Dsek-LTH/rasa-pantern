@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import db_handler
+from db_handling.handler import DBHandler
 from main import PanternBot
 
 
@@ -18,13 +18,13 @@ class ChooseDrinkView(discord.ui.View):
         message_id: int,
         guild_id: int,
         drink_list: list[str],
-        db: db_handler.DBHandler,
+        db: DBHandler,
     ) -> None:
         # Having this field is kind of ugly now that we keep the message_id,
         # but I can't be arsed to fix it rn.
         self.message: discord.Message | None = None
         self.message_id: int = message_id
-        self.db: db_handler.DBHandler = db
+        self.db: DBHandler = db
         self._count: int = 0
         super().__init__(timeout=None)
         selector: ChooseDrinkSelector = ChooseDrinkSelector(
@@ -35,7 +35,7 @@ class ChooseDrinkView(discord.ui.View):
 
     @classmethod
     async def create(
-        cls, message_id: int, guild_id: int, db: db_handler.DBHandler
+        cls, message_id: int, guild_id: int, db: DBHandler
     ) -> ChooseDrinkView:
         drink_list = await db.get_drink_option_list(guild_id)
         return ChooseDrinkView(message_id, guild_id, drink_list, db)
@@ -71,9 +71,9 @@ class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
         message_id: int,
         guild_id: int,
         drink_list: list[str],
-        db: db_handler.DBHandler,
+        db: DBHandler,
     ) -> None:
-        self.db: db_handler.DBHandler = db
+        self.db: DBHandler = db
         options = [
             discord.SelectOption(
                 label="nothing",

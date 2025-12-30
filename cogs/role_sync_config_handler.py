@@ -15,7 +15,7 @@ from discord import (
 from discord.abc import GuildChannel, Messageable
 from discord.ext import commands
 
-from db_handler import DBHandler
+from db_handling.handler import DBHandler
 from helpers import CogSetting, RoleMapping
 from main import PanternBot
 
