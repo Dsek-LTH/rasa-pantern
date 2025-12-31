@@ -1,12 +1,79 @@
+import os
 from collections import defaultdict
-from dis import disco
 from typing import final, override
 
+import asyncpg
 import discord
 from discord import Guild, Interaction, Permissions, Role, app_commands
 from discord.ext import commands, tasks
 
 from main import PanternBot
+
+WEBSITE_DB_URL = os.getenv("WEBSITE_DB_URL")
+
+
+async def get_external_role_list() -> dict[str, list[str]]:
+    """
+    Gets external role id's from our website database and formats them into
+    something that we can use with the bot.
+    """
+
+    conn: asyncpg.Connection = await asyncpg.connect(WEBSITE_DB_URL)
+    assert isinstance(conn, asyncpg.Connection)
+    try:
+        # Potentially we could remove anyone who doesn't have an email set.
+        # This would get rid of most old users, and stop us from having to
+        # worry about them.
+        rows = await conn.fetch(
+            """
+                SELECT
+                  student_id AS username,
+                  COALESCE(
+                    jsonb_agg(mandates.position_id)
+                      FILTER (WHERE mandates.position_id IS NOT NULL),
+                    '[]'::jsonb
+                  )
+                  ||
+                  -- Add board members:
+                  CASE
+                    WHEN bool_or(positions.board_member)
+                      THEN jsonb_build_array('dsek.styr')
+                    ELSE '[]'::jsonb
+                  END
+                  ||
+                  -- Add cpu.core (this really shouldn't be hard-coded)
+                  CASE
+                    WHEN bool_or(positions.role_name IN (
+                        'dsek.cpu.mastare',
+                        'dsek.cpu.vice_mastare',
+                        'dsek.cpu.dwwwansv',
+                        'dsek.cpu.root'
+                    ))
+                    THEN jsonb_build_array('dsek.cpu.core')
+                    ELSE '[]'::jsonb
+                  END AS groups
+                FROM members
+                LEFT JOIN mandates
+                  ON members.id = mandates.member_id
+                  AND start_date <= CURRENT_DATE
+                  AND end_date >= CURRENT_DATE
+                LEFT JOIN positions
+                  ON mandates.position_id = positions.id
+                GROUP BY student_id;
+            """
+        )
+    finally:
+        await conn.close()
+
+    user_groups: dict[str, list[str]] = {}
+    if rows:
+        for row in rows:
+            username = str(row["username"])
+            groups: list[str] = list(row["groups"])
+            user_groups[username] = groups
+    else:
+        print("Warning, Website database returned no members!")
+    return user_groups
 
 
 @final
@@ -77,9 +144,9 @@ class RoleSyncHandler(commands.Cog):
         #         print(f"\t\t{role_LUT[role]}")
         # # WARN: This is debug output please remove
 
-        # TODO: Get linked users and their external roles:
-        # (external_id: [external_role_1, external_role_2])
-        external_linked_users: dict[str, list[str]] = {}
+        external_linked_users: dict[str, list[str]] = (
+            await get_external_role_list()
+        )
         linked_users: dict[int, list[str]] = {}
         for user_id in external_linked_users:
             discord_user_id = await self.bot.db.get_discordId_from_externalId(

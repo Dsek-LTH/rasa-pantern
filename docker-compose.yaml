@@ -30,6 +30,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
       TOKEN: ${DISCORD_BOT_TOKEN}
+      WEBSITE_DB_URL: ${WEBSITE_DB_URL}
     networks:
       - backend
 
