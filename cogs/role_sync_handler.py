@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dis import disco
 from typing import final, override
 
 import discord
@@ -77,8 +78,19 @@ class RoleSyncHandler(commands.Cog):
         # # WARN: This is debug output please remove
 
         # TODO: Get linked users and their external roles:
-        # (discord_user_id: [external_role_1, external_role_2])
+        # (external_id: [external_role_1, external_role_2])
+        external_linked_users: dict[str, list[str]] = {}
         linked_users: dict[int, list[str]] = {}
+        for user_id in external_linked_users:
+            discord_user_id = await self.bot.db.get_discordId_from_externalId(
+                user_id
+            )
+            if discord_user_id:
+                linked_users[discord_user_id] = external_linked_users[user_id]
+            else:
+                print(
+                    f"external user {user_id} did not map to any discord user"
+                )
 
         # append syncing roles
         # TODO: This needs a major refactoring for speedups and general

@@ -613,6 +613,52 @@ class DBHandler:
                 )
         return return_list
 
+    async def get_discordId_from_externalId(
+        self, external_id: str
+    ) -> int | None:
+        """
+        Gets the discord user id that maps to the given external id.
+        Args:
+            external_id: external id for the user.
+        Returns:
+            int | None: discord user id or None if none is found.
+        """
+        get_discord_id_query = """
+            SELECT user_id
+            FROM connected_accounts
+            WHERE stil_id = ?
+        """
+        response = await self.db.execute_read_query(
+            get_discord_id_query, (external_id,)
+        )
+        if response:
+            if isinstance(response["stil_id"], int):
+                return response["stil_id"]
+        return None
+
+    async def get_externalId_from_discordId_(
+        self, discord_id: int
+    ) -> str | None:
+        """
+        Gets the external user id that maps to the given discord id.
+        Args:
+            discord_id: discord id for the user.
+        Returns:
+            int | None: external user id or None if none is found.
+        """
+        get_discord_id_query = """
+            SELECT stil_id
+            FROM connected_accounts
+            WHERE user_id = ?
+        """
+        response = await self.db.execute_read_query(
+            get_discord_id_query, (discord_id,)
+        )
+        if response:
+            if isinstance(response["user_id"], str):
+                return response["user_id"]
+        return None
+
     # ------------------------------------------------------
     # settings system:
     async def set_setting(

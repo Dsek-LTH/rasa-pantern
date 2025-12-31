@@ -6,16 +6,18 @@ services:
     container_name: postgres
     restart: on-failure:1
     environment:
-      POSTGRES_USER: cpu
-      POSTGRES_PASSWORD: <DB-PASSWORD>
-      POSTGRES_DB: discord
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
     networks:
       - backend
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   rasa-pantern:
-    image: 6fcfd022b54f
+    image: rasa-pantern:latest
     container_name: rasa-pantern
     # Setup command:
     # command: uv run -m db_handling.handler
@@ -24,12 +26,37 @@ services:
       - postgres
     environment:
       DB_HOST: postgres
-      DB_USERNAME: cpu
-      DB_PASSWORD: <DB-PASSWORD>
-      DB_NAME: discord
-      TOKEN: "<TOKEN>"
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      TOKEN: ${DISCORD_BOT_TOKEN}
     networks:
       - backend
+
+  janus:
+    image: janus:latest
+    container_name: janus
+    restart: on-failure:1
+    depends_on:
+      - postgres
+    environment:
+      DSEK_CLIENT_ID: ${DSEK_CLIENT_ID}
+      DSEK_CLIENT_SECRET: ${DSEK_CLIENT_SECRET}
+      DSEK_REDIRECT_URI: ${DSEK_REDIRECT_URI}
+
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      DATABASE_URL: "postgresql://cpu:rasa-pantern@postgres:5432/discord"
+    ports:
+      -  "3000:3000"
+    networks:
+      - backend
+
+
 
 volumes:
   pgdata:
