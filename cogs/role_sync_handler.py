@@ -1,3 +1,4 @@
+import json
 import os
 from collections import defaultdict
 from typing import final, override
@@ -43,7 +44,7 @@ async def get_external_role_list() -> dict[str, list[str]]:
                   ||
                   -- Add cpu.core (this really shouldn't be hard-coded)
                   CASE
-                    WHEN bool_or(positions.role_name IN (
+                    WHEN bool_or(positions.id IN (
                         'dsek.cpu.mastare',
                         'dsek.cpu.vice_mastare',
                         'dsek.cpu.dwwwansv',
@@ -69,7 +70,7 @@ async def get_external_role_list() -> dict[str, list[str]]:
     if rows:
         for row in rows:
             username = str(row["username"])
-            groups: list[str] = list(row["groups"])
+            groups: list[str] = json.loads(row["groups"])
             user_groups[username] = groups
     else:
         print("Warning, Website database returned no members!")
@@ -155,14 +156,19 @@ class RoleSyncHandler(commands.Cog):
             if discord_user_id:
                 linked_users[discord_user_id] = external_linked_users[user_id]
             else:
-                print(
-                    f"external user {user_id} did not map to any discord user"
-                )
+                # This would spam the logs a tad too much maybe we only check
+                # for users with emails or something IDK? It would be nice info
+                # to have imo
+                # print(
+                #     f"external user {user_id} did not map to any discord user"
+                # )
+                pass
 
-        # append syncing roles
-        # TODO: This needs a major refactoring for speedups and general
+        # TODO: This might need major refactoring for speedups and general
         # readability, it's a tripple nested for loop for gods sake...
         for user_id in linked_users:
+            if linked_users[user_id] != []:
+                print(("Syncing roles for: " f"{guild.get_member(user_id)}"))
             for external_role in linked_users[user_id]:
                 role = list(
                     filter(lambda r: r.role_id == external_role, roles_to_sync)
@@ -170,7 +176,11 @@ class RoleSyncHandler(commands.Cog):
                 if role != []:
                     new_roles[user_id].add(role[0].discord_role_id)
                     print(
-                        f"adding {role[0].role_id} (discord: {guild.get_role(role[0].discord_role_id)}) to {guild.get_member(user_id)}"
+                        (
+                            f"\tadding {role[0].role_id} (discord: "
+                            f"{guild.get_role(role[0].discord_role_id)}) "
+                            f"to {guild.get_member(user_id)}"
+                        )
                     )
 
         print()
@@ -225,7 +235,8 @@ class RoleSyncHandler(commands.Cog):
 
     @tasks.loop(hours=24)
     async def sync_task(self) -> None:
-        # TODO: make this check what guild to update
+        # TODO: make this check what guild to update, by like checking what
+        # gulid had this time set in the database or smt
         for guild in self.bot.guilds:
             await self._sync(guild)
 
