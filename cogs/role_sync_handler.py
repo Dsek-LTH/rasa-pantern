@@ -15,7 +15,7 @@ from discord import (
 )
 from discord.ext import commands, tasks
 
-from helpers import SyncOutputData
+from helpers import CogSetting, SyncOutputData
 from main import PanternBot
 
 WEBSITE_DB_URL = os.getenv("WEBSITE_DB_URL")
@@ -92,11 +92,10 @@ async def get_external_role_list() -> dict[str, list[str]]:
 
 @final
 class RoleSyncHandler(commands.Cog):
-    def __init__(self, bot: PanternBot, dry_run_mode: bool) -> None:
+    def __init__(self, bot: PanternBot) -> None:
         self.bot = bot
         # TODO: make this a database entry that defaults to false
         # We also want database entries for when a certain
-        self.dry_run = dry_run_mode
 
     @override
     async def cog_load(self) -> None:
@@ -109,7 +108,6 @@ class RoleSyncHandler(commands.Cog):
         # TODO: Consider if we need to handle what happens if the cog gets
         # unloaded whlist running a sync, a dirty flag in the database maybe?
         await super().cog_unload()
-        pass
 
     async def _sync(self, guild: Guild) -> SyncOutputData:
         # TODO: Consider chunking when getting from our database and doing a
@@ -117,7 +115,11 @@ class RoleSyncHandler(commands.Cog):
         # out of ram (not that we probably ever will on our hardware, but it
         # would be nice to keep in mind).
         print("starting sync")
-        if self.dry_run:
+        if bool(
+            await self.bot.db.get_setting(
+                guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
+            )
+        ):
             print("!!!RUNNING IN DRY MODE!!!")
 
         output_data = SyncOutputData()
@@ -257,7 +259,11 @@ class RoleSyncHandler(commands.Cog):
                 )
             )
             try:
-                if not self.dry_run:
+                if not bool(
+                    await self.bot.db.get_setting(
+                        guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
+                    )
+                ):
                     _ = await member.edit(
                         roles=[
                             role_LUT[role_id] for role_id in new_roles[user_id]
@@ -318,9 +324,12 @@ class RoleSyncHandler(commands.Cog):
             if self.sync_task.next_iteration
             else "No automatic sync running."
         )
-        dry_mode_string = (
-            "# WARNING: RUNNING IN DRY MODE\n" if self.dry_run else ""
+        dry_run = bool(
+            await self.bot.db.get_setting(
+                interaction.guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
+            )
         )
+        dry_mode_string = "# WARNING: RUNNING IN DRY MODE\n" if dry_run else ""
         _ = await interaction.followup.send(
             (
                 f"{dry_mode_string}"
@@ -337,10 +346,17 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    # TODO: add description
-    async def configure_sync(
-        self, interaction: Interaction, sync_at: str
+    @app_commands.describe(
+        sync_at="The time at which the bot should sync the roles",
+        enabled="Whether to disable automatic syncing or not",
+    )
+    async def set_autosync(
+        self, interaction: Interaction, sync_at: str = "", enabled: bool = True
     ) -> None:
+        """
+        Sets the bot to automatically sync at the given time every day.
+        """
+        self.sync_task.change_interval()
         # TODO: make Sync_at DateTime object
         # Set the sync time in the database and the sync_task timer to the
         # given value
@@ -359,9 +375,27 @@ class RoleSyncHandler(commands.Cog):
         # given value
         pass
 
+    @app_commands.guild_only()
+    @app_commands.default_permissions(Permissions(administrator=True))
+    @app_commands.describe(enabled="Whether to run in dry_run mode or not")
+    async def set_dry_run(
+        self, interaction: Interaction, enabled: bool
+    ) -> None:
+        """
+        Configures if the bot should dry run or not
+        (i.e. if the bot should refrain from changing any roles or not)
+        """
+        assert interaction.guild_id
+        await self.bot.db.set_setting(
+            interaction.guild_id,
+            CogSetting.ROLE_SYNC_HANDLER,
+            "dry_run",
+            str(enabled),
+        )
+
 
 # ----------------------MAIN PROGRAM----------------------
 # This setup is required for the cog to setup and run,
 # and is run when the cog is loaded with bot.load_extensions().
 async def setup(bot: PanternBot) -> None:
-    await bot.add_cog(RoleSyncHandler(bot, True))
+    await bot.add_cog(RoleSyncHandler(bot))
