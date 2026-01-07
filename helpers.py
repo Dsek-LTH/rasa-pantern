@@ -26,6 +26,40 @@ class RoleMapping:
         )
 
 
+@final
+class SyncOutputData:
+    def __init__(self):
+        self.total_users_to_change: int = 0
+        self.failed_users: int = 0
+        self.non_changed_users: int = 0
+        self.non_syncable_roles: list[int] = []
+
+    def user_failed(self):
+        """
+        Increment failed user count.
+        """
+        self.failed_users += 1
+
+    def user_no_change(self):
+        """
+        Increment non changed user count.
+        """
+        self.non_changed_users += 1
+
+    def add_non_syncable_role(self, role_id: int):
+        """
+        Add a role the bot cannot sync to the list.
+        """
+        self.non_syncable_roles.append(role_id)
+
+    def get_changed_amount(self) -> int:
+        return (
+            self.total_users_to_change
+            - self.failed_users
+            - self.non_changed_users
+        )
+
+
 class CogSetting(Enum):
     DRINKS_HANDLER = 0
     CONFIGURE_DRINKS_HANDLER = 1

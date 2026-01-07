@@ -5,9 +5,17 @@ from typing import final, override
 
 import asyncpg
 import discord
-from discord import Guild, Interaction, Permissions, Role, app_commands
+from discord import (
+    Guild,
+    HTTPException,
+    Interaction,
+    Permissions,
+    Role,
+    app_commands,
+)
 from discord.ext import commands, tasks
 
+from helpers import SyncOutputData
 from main import PanternBot
 
 WEBSITE_DB_URL = os.getenv("WEBSITE_DB_URL")
@@ -17,6 +25,10 @@ async def get_external_role_list() -> dict[str, list[str]]:
     """
     Gets external role id's from our website database and formats them into
     something that we can use with the bot.
+
+    Returns:
+        dict[str, list[str]]: A dict mapping external role id to a list of
+                              external groups.
     """
 
     conn: asyncpg.Connection = await asyncpg.connect(WEBSITE_DB_URL)
@@ -25,6 +37,7 @@ async def get_external_role_list() -> dict[str, list[str]]:
         # Potentially we could remove anyone who doesn't have an email set.
         # This would get rid of most old users, and stop us from having to
         # worry about them.
+        # TODO: CPU core are hard coded in this list. That might not be great..
         rows = await conn.fetch(
             """
                 SELECT
@@ -98,8 +111,16 @@ class RoleSyncHandler(commands.Cog):
         await super().cog_unload()
         pass
 
-    async def _sync(self, guild: Guild) -> None:
+    async def _sync(self, guild: Guild) -> SyncOutputData:
+        # TODO: Consider chunking when getting from our database and doing a
+        # certain amount of users / roles at a time in order to avoid running
+        # out of ram (not that we probably ever will on our hardware, but it
+        # would be nice to keep in mind).
         print("starting sync")
+        if self.dry_run:
+            print("!!!RUNNING IN DRY MODE!!!")
+
+        output_data = SyncOutputData()
 
         if self.bot.get_guild(guild.id) is None:
             guild = await self.bot.fetch_guild(guild.id)
@@ -116,26 +137,26 @@ class RoleSyncHandler(commands.Cog):
         role_LUT: dict[int, Role] = {}
         roles_to_sync = await self.bot.db.get_guild_role_configs(guild.id)
 
-        # print(f"roles_to_sync: {roles_to_sync}")
         # Make a list of all non syncing roles
         for role in all_roles:
             role_LUT[role.id] = role
 
             if not role.is_assignable():
                 print(f"\t no permissions to assign to {role.name}")
-                # TODO: add these values into some form of output object so
-                # We can give info back to the user.
+                output_data.add_non_syncable_role(role.id)
                 for user in role.members:
                     old_roles[user.id].add(role.id)
                     new_roles[user.id].add(role.id)
                 continue
 
-            sync_roles = role.id not in map(
-                lambda r: r.discord_role_id, roles_to_sync
-            )
+            role_is_synced = role.id not in [
+                sync_role.discord_role_id for sync_role in roles_to_sync
+            ]
+            # If we aren't syncing this role, don't add it to the users list of
+            # new roles
             for user in role.members:
                 old_roles[user.id].add(role.id)
-                if sync_roles:
+                if role_is_synced:
                     new_roles[user.id].add(role.id)
 
         # # WARN: This is debug output please remove
@@ -148,7 +169,10 @@ class RoleSyncHandler(commands.Cog):
         external_linked_users: dict[str, list[str]] = (
             await get_external_role_list()
         )
+
+        # Maps discord user id to list of external roles
         linked_users: dict[int, list[str]] = {}
+
         for user_id in external_linked_users:
             discord_user_id = await self.bot.db.get_discordId_from_externalId(
                 user_id
@@ -160,7 +184,10 @@ class RoleSyncHandler(commands.Cog):
                 # for users with emails or something IDK? It would be nice info
                 # to have imo
                 # print(
-                #     f"external user {user_id} did not map to any discord user"
+                #     (
+                #         f"external user {user_id} "
+                #         "did not map to any discord user"
+                #     )
                 # )
                 pass
 
@@ -170,25 +197,39 @@ class RoleSyncHandler(commands.Cog):
             if linked_users[user_id] != []:
                 print(("Syncing roles for: " f"{guild.get_member(user_id)}"))
             for external_role in linked_users[user_id]:
-                role = list(
-                    filter(lambda r: r.role_id == external_role, roles_to_sync)
+                role = next(
+                    (r for r in roles_to_sync if r.role_id == external_role),
+                    None,
                 )
-                if role != []:
-                    new_roles[user_id].add(role[0].discord_role_id)
-                    print(
-                        (
-                            f"\tadding {role[0].role_id} (discord: "
-                            f"{guild.get_role(role[0].discord_role_id)}) "
-                            f"to {guild.get_member(user_id)}"
+                if role:
+                    if role.discord_role_id in output_data.non_syncable_roles:
+                        print(
+                            (
+                                f"\tCould not add role {role.role_id}"
+                                " (discord: "
+                                f"{guild.get_role(role.discord_role_id)}) "
+                                f"to {guild.get_member(user_id)} "
+                                "since role is non syncable"
+                            )
                         )
-                    )
+                    else:
+                        new_roles[user_id].add(role.discord_role_id)
+                        print(
+                            (
+                                f"\tadding {role.role_id} (discord: "
+                                f"{guild.get_role(role.discord_role_id)}) "
+                                f"to {guild.get_member(user_id)}"
+                            )
+                        )
 
         print()
+        output_data.total_users_to_change = len(new_roles)
 
         for user_id in new_roles:
             if new_roles[user_id] == old_roles[user_id]:
                 # We don't need to set the roles for a user if we don't need to
                 # change them, and thus we don't need to load them either
+                output_data.user_no_change()
                 continue
 
             # This should never be required, but make sure that we actually
@@ -206,16 +247,22 @@ class RoleSyncHandler(commands.Cog):
                             ". Skipping them..."
                         )
                     )
+                    output_data.user_failed()
                     continue
 
             print(
-                f"settings roles of {member.name} to {[role_LUT[r].name for r in new_roles[user_id]]}"
+                (
+                    f"settings roles of {member.name} to "
+                    f"{[role_LUT[r].name for r in new_roles[user_id]]}"
+                )
             )
             try:
-                # Removed as to not accidentally set roles whilst trying out new bot
-                # _ = await member.edit(
-                #     roles=[role_LUT[role_id] for role_id in new_roles[user_id]]
-                # )
+                if not self.dry_run:
+                    _ = await member.edit(
+                        roles=[
+                            role_LUT[role_id] for role_id in new_roles[user_id]
+                        ]
+                    )
                 pass
             except discord.Forbidden as e:
                 user_role_list = [
@@ -229,31 +276,61 @@ class RoleSyncHandler(commands.Cog):
                         f"It could be any of the following: "
                         f"{user_role_list}"
                         " or a role the user already has. "
-                        f"Stack is as follows {e}\n"
+                        f"Stack is as follows: {e}\n"
                     )
                 )
+                output_data.user_failed()
+            except HTTPException as e:
+                print(
+                    (
+                        "\n ERROR: HTTP Exception, the action failed. "
+                        f"Stacktrace is as follows: {e}"
+                    )
+                )
+                output_data.user_failed()
 
         print("sync done")
+        return output_data
 
     @tasks.loop(hours=24)
     async def sync_task(self) -> None:
         # TODO: make this check what guild to update, by like checking what
-        # gulid had this time set in the database or smt
+        # guild had this time set in the database or smt
         for guild in self.bot.guilds:
-            await self._sync(guild)
+            # TODO: Potentially log this data somewhere so it doesn't go lost
+            _ = await self._sync(guild)
 
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    # TODO: add description
-    async def sync_roles(self, interaction: Interaction) -> None:
+    async def start_sync(self, interaction: Interaction) -> None:
+        """
+        Syncs all configured groups from an external source into discord.
+        """
+
         assert interaction.guild
         _ = await interaction.response.defer()
 
-        await self._sync(interaction.guild)
+        data = await self._sync(interaction.guild)
 
+        sync_string = (
+            f"Next automatic sync in {self.sync_task.next_iteration}."
+            if self.sync_task.next_iteration
+            else "No automatic sync running."
+        )
+        dry_mode_string = (
+            "# WARNING: RUNNING IN DRY MODE\n" if self.dry_run else ""
+        )
         _ = await interaction.followup.send(
-            f"next sync in {self.sync_task.next_iteration}. Sync completed",
+            (
+                f"{dry_mode_string}"
+                "Sync completed!\n"
+                f"Synced {data.total_users_to_change} users.\n"
+                f"{sync_string}\n"
+                f"{data.get_changed_amount()} succeeded, "
+                f"{data.non_changed_users} were unchanged and "
+                f"{data.failed_users} failed."
+            ),
             ephemeral=True,
         )
 
@@ -273,6 +350,9 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     async def set_timezone(self, interaction: Interaction) -> None:
+        """
+        Sets the timezone of the bot sync to the given value
+        """
         # TODO: Allow the user to set the timezone to a valid option.
         # Maybe use autocomplete to make this easier?
         # Set the timezone and the timezone for the sync_task timer to the
