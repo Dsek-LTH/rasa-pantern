@@ -17,7 +17,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   rasa-pantern:
-    image: rasa-pantern:latest
+    image: rasa-pantern:debug
     container_name: rasa-pantern
     # Setup command:
     # command: uv run -m db_handling.handler
@@ -25,12 +25,12 @@ services:
     depends_on:
       - postgres
     environment:
-      DB_HOST: postgres
+      DB_HOST: ${DB_HOST}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
-      TOKEN: ${DISCORD_BOT_TOKEN}
-      WEBSITE_DB_URL: ${WEBSITE_DB_URL}
+      TOKEN: ${TOKEN}
+      WEBSITE_DB_URL: "postgresql://cpu:rasa-pantern@postgres:5432/discord"
     networks:
       - backend
 

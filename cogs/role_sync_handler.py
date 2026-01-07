@@ -212,9 +212,11 @@ class RoleSyncHandler(commands.Cog):
                 f"settings roles of {member.name} to {[role_LUT[r].name for r in new_roles[user_id]]}"
             )
             try:
-                _ = await member.edit(
-                    roles=[role_LUT[role_id] for role_id in new_roles[user_id]]
-                )
+                # Removed as to not accidentally set roles whilst trying out new bot
+                # _ = await member.edit(
+                #     roles=[role_LUT[role_id] for role_id in new_roles[user_id]]
+                # )
+                pass
             except discord.Forbidden as e:
                 user_role_list = [
                     role_LUT[role_id].name for role_id in new_roles[user_id]
