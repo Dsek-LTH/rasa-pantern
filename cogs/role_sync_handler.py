@@ -159,7 +159,7 @@ class RoleSyncHandler(commands.Cog):
 
     @override
     async def cog_load(self) -> None:
-        # TODO: load timezone and synctime per guild here so we can run the
+        # TODO: load timezone and synctime from database here so we can run the
         # sync task only when we need to
         return await super().cog_load()
 
@@ -522,6 +522,9 @@ class RoleSyncHandler(commands.Cog):
         """
         Sets the bot to automatically sync at the given time and interval.
         """
+        # TODO: Add function to manage running autosync tasks and close those
+        # we no longer want. I'm thinking Components V.2 Is a perfect fit for
+        # this
         assert interaction.guild
         assert interaction.guild_id
         try:
