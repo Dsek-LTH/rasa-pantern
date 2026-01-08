@@ -200,17 +200,9 @@ class ConfigureDrinksHandler(commands.Cog):
         to make this change
         """
         # Check if user is in the right groups to make this change
-        # TODO: make a dict object in bot that contains setting names, cogs
-        # and descriptions. Then have a new cog that deals with changing
-        # settings for things. Have a setting field called change_drink_perms
-        # or similar. This could be a comma separated list or similar for what
-        # discord roles are allowed to change this value.
-        if not interaction.guild_id or not interaction.guild:
-            # If we reach this and don't have a guild id despite this
-            # command being set to guild only something is very wrong...
-            raise ValueError("Cannot find guild")
-        if interaction.user is not discord.Member:
-            raise ValueError("user not a guild member")
+        assert interaction.guild
+        assert interaction.guild_id
+        assert isinstance(interaction.user, discord.Member)
 
         allowed_roles_raw = await self.bot.db.get_setting(
             interaction.guild_id,

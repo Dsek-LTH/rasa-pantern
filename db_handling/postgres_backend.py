@@ -52,7 +52,6 @@ class PostresqlHandler(Database):
                     row = await conn.fetchrow(self.translate_sql(query), *vars)
                     if row is None:
                         return None
-                    # TODO: make this one line and remove var
                     return cast(dict[str, str | int], dict(row))
                 except asyncpg.PostgresError as e:
                     print(f"DB error: {e} occured")
@@ -67,7 +66,6 @@ class PostresqlHandler(Database):
                     rows = await conn.fetch(self.translate_sql(query), *vars)
                     if not rows:
                         return None
-                    # TODO: make this one line and remove var
                     return [
                         cast(dict[str, str | int], dict(row)) for row in rows
                     ]

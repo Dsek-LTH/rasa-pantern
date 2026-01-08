@@ -1,14 +1,17 @@
 import asyncio
 import json
 import os
+import zoneinfo
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from multiprocessing import Value
 from typing import final, override
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import asyncpg
 import discord
+import humanize
 from discord import (
     Guild,
     HTTPException,
@@ -448,6 +451,51 @@ class RoleSyncHandler(commands.Cog):
             ephemeral=True,
         )
 
+    async def sync_at_autocomplete(
+        self, _: Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        output: list[str] = []
+        parts = current.split(":")
+
+        try:
+            if len(parts) == 1:
+                hour = int(parts[0])
+                if 0 <= hour <= 23:
+                    for minute in [0, 15, 30, 45]:
+                        output.append(f"{hour:02d}:{minute:02d}")
+            elif len(parts) == 2:
+                hour = int(parts[0])
+                minute_beginning: str = parts[1]
+                for minute in [0, 15, 30, 45]:
+                    if f"{minute:02d}".startswith(minute_beginning):
+                        output.append(f"{hour:02d}:{minute:02d}")
+            else:
+                output.append("00:00")
+                output.append("03:00")
+
+        # If we have been passed a non number, we can't really help...
+        except ValueError:
+            output = ["00:00", "03:00"]
+
+        return [app_commands.Choice(name=c, value=c) for c in output]
+
+    async def re_run_rate_autocomplete(self, _: Interaction, current: str):
+        recommended_options = [
+            "12:00",
+            "24:00",
+            "0:12:00",
+            "0:24:00",
+            "1:00:00",
+            "2:00:00",
+            "3:00:00",
+            "7:00:00",
+            "30:00:00",
+        ]
+        output = [
+            rec for rec in recommended_options if rec.startswith(current)
+        ]
+        return [app_commands.Choice(name=o, value=o) for o in output]
+
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
@@ -457,23 +505,38 @@ class RoleSyncHandler(commands.Cog):
             "Whether the sync should automatically "
             "re-run after it's complete."
         ),
-        re_run_rate=("How often the sync should re-run (written as DD:HH:MM)"),
+        re_run_rate=(
+            "How often the sync should re-run (written as DD:HH:MM or HH:MM)"
+        ),
+    )
+    @app_commands.autocomplete(
+        sync_at=sync_at_autocomplete, re_run_rate=re_run_rate_autocomplete
     )
     async def autosync(
         self,
         interaction: Interaction,
-        sync_at: str = "",
+        sync_at: str,
         re_run: bool = False,
         re_run_rate: str | None = None,
     ) -> None:
         """
         Sets the bot to automatically sync at the given time and interval.
         """
-        # TODO: Make an autocomplete for the re_run_rate and sync_at
-        # syncat: HH:MM
-        # re_run_rate: DD:HH:MM or HH:MM
         assert interaction.guild
         assert interaction.guild_id
+        try:
+            # Just checking that it's possible to create a datetime object
+            _ = datetime.strptime(sync_at, "%H:%M").time()
+        except ValueError:
+            _ = await interaction.response.send_message(
+                (
+                    f'"{sync_at}" is an invalid format for sync_at. '
+                    "Use HH:MM in 24-hour format."
+                ),
+                ephemeral=True,
+            )
+            return
+
         timezone = await self.bot.db.get_setting(
             interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone"
         )
@@ -488,7 +551,6 @@ class RoleSyncHandler(commands.Cog):
             return
         timezone = ZoneInfo(timezone)
 
-        # TODO: Fix input formatting
         h, m = map(int, sync_at.split(":"))
         sync_time = datetime.now(timezone)
         sync_time = sync_time.replace(hour=h, minute=m, second=0)
@@ -508,7 +570,27 @@ class RoleSyncHandler(commands.Cog):
                 )
                 return
             else:
-                # TODO: Make sure we support both DD:HH:MM and HH:MM
+                try:
+                    split = re_run_rate.split(":")
+                    if len(split) == 3:
+                        # Checking so input is valid
+                        _ = int(split[0])
+                        short_rate = f"{re_run_rate[1]}:{re_run_rate[2]}"
+                        _ = datetime.strptime(short_rate, "%H:%M").time()
+                    else:
+                        _ = datetime.strptime(re_run_rate, "%H:%M").time()
+                        re_run_rate = "0:" + re_run_rate
+
+                except ValueError:
+                    _ = await interaction.response.send_message(
+                        (
+                            f'"{re_run_rate}" is an invalid format for'
+                            "re_run_rate. Use HH:MM or DD:HH:MM in"
+                            "24-hour format."
+                        ),
+                        ephemeral=True,
+                    )
+                    return
                 d, h, m = map(int, re_run_rate.split(":"))
                 re_run_obj = timedelta(days=d, hours=h, minutes=m, seconds=0)
         else:
@@ -516,27 +598,46 @@ class RoleSyncHandler(commands.Cog):
 
         sync_info = SyncInfo(sync_time, interaction.guild, re_run, re_run_obj)
         self.add_sync_time(sync_info)
-        # TODO: Make this output nicer
-        _ = await interaction.response.send_message(
-            (
-                f"Scheduled sync for {sync_info.run_at} "
-                f"with re_run set to {re_run} and a rate of {re_run_obj}"
+        recurring: str = "."
+        if re_run:
+            recurring = (
+                f", recurring every {humanize.precisedelta(re_run_obj)}."
             )
+        _ = await interaction.response.send_message(
+            f"Scheduled sync <t:{int(sync_time.timestamp())}:R>{recurring}"
         )
+
+    async def timezone_autocomplete(
+        self, _: Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        matches = [
+            tz
+            for tz in zoneinfo.available_timezones()
+            if current.lower() in tz.lower()
+        ]
+        # Discord only supports 25 matches
+        matches = matches[:25]
+        return [app_commands.Choice(name=tz, value=tz) for tz in matches]
 
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    @app_commands.describe(tz="Olson timezone string (Europe/Stockholm)")
+    @app_commands.describe(tz="Olson timezone string (e.x. Europe/Stockholm)")
     @app_commands.rename(tz="timezone")
+    @app_commands.autocomplete(tz=timezone_autocomplete)
     async def set_timezone(self, interaction: Interaction, tz: str) -> None:
         """
         Sets the timezone of the bot sync to the given value
         """
         assert interaction.guild_id
-        # TODO: Do error handling and make sure the timezone is valid
-        # Also write an autocomplete handler to make sure this gets passed
-        # properly.
+        try:
+            _ = ZoneInfo(tz)
+        except ZoneInfoNotFoundError:
+            _ = await interaction.response.send_message(
+                f"{tz} is not a valid Olson timezone"
+            )
+            return
+
         await self.bot.db.set_setting(
             interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone", tz
         )
