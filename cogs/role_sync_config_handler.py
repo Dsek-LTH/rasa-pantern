@@ -358,10 +358,13 @@ class RoleSyncConfigHandler(commands.Cog):
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    # TODO: write description
     async def initialize_role_sync_config(
         self, interaction: discord.Interaction
     ) -> None:
+        """
+        Initialize the bot to start configuring role sync by choosing what
+        channel to send messages in.
+        """
         assert interaction.guild_id
         config_channel_id = await self.bot.db.get_setting(
             interaction.guild_id,
@@ -430,11 +433,14 @@ class RoleSyncConfigHandler(commands.Cog):
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    # TODO: write description
     # TODO: Make sure we can't make two identical mappings
     async def create_role_mapping(
         self, interaction: discord.Interaction
     ) -> None:
+        """
+        Creates a message controlling the mapping between a discord role and an
+        external role
+        """
         assert interaction.guild_id
         config_channel_id = await self.bot.db.get_setting(
             interaction.guild_id,
