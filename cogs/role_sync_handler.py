@@ -1,7 +1,11 @@
+import asyncio
 import json
 import os
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import final, override
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import discord
@@ -15,10 +19,62 @@ from discord import (
 )
 from discord.ext import commands, tasks
 
-from helpers import CogSetting, SyncOutputData
+from helpers import CogSetting
 from main import PanternBot
 
 WEBSITE_DB_URL = os.getenv("WEBSITE_DB_URL")
+
+
+@final
+class SyncOutputData:
+    def __init__(self):
+        self.total_users_to_change: int = 0
+        self.failed_users: int = 0
+        self.non_changed_users: int = 0
+        self.non_syncable_roles: list[int] = []
+
+    @override
+    def __repr__(self) -> str:
+        return (
+            f"Sync for {self.total_users_to_change}, "
+            f"changed: {self.get_changed_amount()}, "
+            f"didn't change: {self.non_changed_users}, "
+            f"failed: {self.failed_users}. "
+            f"{len(self.non_syncable_roles)} roles were unsyncable."
+        )
+
+    def user_failed(self):
+        """
+        Increment failed user count.
+        """
+        self.failed_users += 1
+
+    def user_no_change(self):
+        """
+        Increment non changed user count.
+        """
+        self.non_changed_users += 1
+
+    def add_non_syncable_role(self, role_id: int):
+        """
+        Add a role the bot cannot sync to the list.
+        """
+        self.non_syncable_roles.append(role_id)
+
+    def get_changed_amount(self) -> int:
+        return (
+            self.total_users_to_change
+            - self.failed_users
+            - self.non_changed_users
+        )
+
+
+@dataclass
+class SyncInfo:
+    run_at: datetime
+    guild: discord.Guild
+    re_run: bool = False
+    re_run_rate: timedelta | None = None
 
 
 async def get_external_role_list() -> dict[str, list[str]]:
@@ -94,8 +150,9 @@ async def get_external_role_list() -> dict[str, list[str]]:
 class RoleSyncHandler(commands.Cog):
     def __init__(self, bot: PanternBot) -> None:
         self.bot = bot
-        # TODO: make this a database entry that defaults to false
-        # We also want database entries for when a certain
+        self.add_time_event = asyncio.Event()
+        self.sync_times: list[SyncInfo] = []
+        self.sync_timer_task = bot.loop.create_task(self.sync_timer())
 
     @override
     async def cog_load(self) -> None:
@@ -108,6 +165,66 @@ class RoleSyncHandler(commands.Cog):
         # TODO: Consider if we need to handle what happens if the cog gets
         # unloaded whlist running a sync, a dirty flag in the database maybe?
         await super().cog_unload()
+        _ = self.sync_timer_task.cancel()
+
+    def add_sync_time(self, sync_info: SyncInfo):
+        self.sync_times.append(sync_info)
+        self.sync_times.sort(key=lambda si: si.run_at)
+        self.add_time_event.set()
+
+    async def sync_timer(self) -> None:
+        while True:
+            if not self.sync_times:
+                self.add_time_event.clear()
+                _ = await self.add_time_event.wait()
+                continue
+
+            sync_info = self.sync_times[0]
+            now = datetime.now(timezone.utc)
+            wait_time = (sync_info.run_at - now).total_seconds()
+            if wait_time > 0:
+                try:
+                    self.add_time_event.clear()
+                    _ = await asyncio.wait_for(
+                        self.add_time_event.wait(), timeout=wait_time
+                    )
+                    # We have added a new time, go back to top of function
+                    continue
+                except asyncio.TimeoutError:
+                    pass
+
+            # Remove the time we just passed
+            _ = self.sync_times.pop(0)
+
+            # Schedule a run task so we can continue with our loop
+            _ = asyncio.create_task(self.run_timer_sync(sync_info))
+
+    async def run_timer_sync(self, sync_info: SyncInfo):
+        output_data = await self._sync(sync_info.guild)
+        print(
+            (
+                f"auto sync run at: {sync_info.run_at} "
+                f"in guild {sync_info.guild.name} "
+                "has completed"
+            )
+        )
+        print(output_data)
+        if len(self.sync_times) > 0:
+            print(self.sync_times)
+        if sync_info.re_run:
+            if sync_info.re_run_rate:
+                new_sync_info = sync_info
+                new_sync_info.run_at = sync_info.run_at + sync_info.re_run_rate
+                self.add_sync_time(new_sync_info)
+                print(f"Re-scheduled sync for {new_sync_info.run_at}")
+            else:
+                print(
+                    (
+                        "WARN: Event was scheduled to re-run"
+                        " but doesn't have the re-run rate set. Ignoring"
+                    )
+                )
+        print()
 
     async def _sync(self, guild: Guild) -> SyncOutputData:
         # TODO: Consider chunking when getting from our database and doing a
@@ -129,8 +246,8 @@ class RoleSyncHandler(commands.Cog):
 
         # Make sure our users are cached as cheaply as possible:
         if not guild.chunked:
-            # WARN: This is very intensive and may take a long time for very
-            # big servers (thankfully ours doesn't count as one).
+            # WARN: This can be very intensive and may take a long time for
+            # very big servers (thankfully ours doesn't count as one).
             _ = await guild.chunk()
 
         all_roles = guild.roles
@@ -160,13 +277,6 @@ class RoleSyncHandler(commands.Cog):
                 old_roles[user.id].add(role.id)
                 if role_is_synced:
                     new_roles[user.id].add(role.id)
-
-        # # WARN: This is debug output please remove
-        # for user in new_roles:
-        #     print(f"\t user: {guild.get_member(user)}")
-        #     for role in new_roles[user]:
-        #         print(f"\t\t{role_LUT[role]}")
-        # # WARN: This is debug output please remove
 
         external_linked_users: dict[str, list[str]] = (
             await get_external_role_list()
@@ -298,14 +408,6 @@ class RoleSyncHandler(commands.Cog):
         print("sync done")
         return output_data
 
-    @tasks.loop(hours=24)
-    async def sync_task(self) -> None:
-        # TODO: make this check what guild to update, by like checking what
-        # guild had this time set in the database or smt
-        for guild in self.bot.guilds:
-            # TODO: Potentially log this data somewhere so it doesn't go lost
-            _ = await self._sync(guild)
-
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
@@ -320,8 +422,11 @@ class RoleSyncHandler(commands.Cog):
         data = await self._sync(interaction.guild)
 
         sync_string = (
-            f"Next automatic sync in {self.sync_task.next_iteration}."
-            if self.sync_task.next_iteration
+            (
+                "Next automatic sync "
+                f"<t:{int(self.sync_times[0].run_at.timestamp())}:R>."
+            )
+            if len(self.sync_times) > 0
             else "No automatic sync running."
         )
         dry_run = bool(
@@ -347,33 +452,95 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     @app_commands.describe(
-        sync_at="The time at which the bot should sync the roles",
-        enabled="Whether to disable automatic syncing or not",
+        sync_at="The time at which the bot should sync the roles (HH:MM)",
+        re_run=(
+            "Whether the sync should automatically "
+            "re-run after it's complete."
+        ),
+        re_run_rate=("How often the sync should re-run (written as DD:HH:MM)"),
     )
-    async def set_autosync(
-        self, interaction: Interaction, sync_at: str = "", enabled: bool = True
+    async def autosync(
+        self,
+        interaction: Interaction,
+        sync_at: str = "",
+        re_run: bool = False,
+        re_run_rate: str | None = None,
     ) -> None:
         """
-        Sets the bot to automatically sync at the given time every day.
+        Sets the bot to automatically sync at the given time and interval.
         """
-        self.sync_task.change_interval()
-        # TODO: make Sync_at DateTime object
-        # Set the sync time in the database and the sync_task timer to the
-        # given value
-        pass
+        # TODO: Make an autocomplete for the re_run_rate and sync_at
+        # syncat: HH:MM
+        # re_run_rate: DD:HH:MM or HH:MM
+        assert interaction.guild
+        assert interaction.guild_id
+        timezone = await self.bot.db.get_setting(
+            interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone"
+        )
+        if not timezone:
+            _ = await interaction.response.send_message(
+                (
+                    "Timezone is not set for this Guild, "
+                    f"please configure it by running /{self.set_timezone.name}"
+                ),
+                ephemeral=True,
+            )
+            return
+        timezone = ZoneInfo(timezone)
+
+        # TODO: Fix input formatting
+        h, m = map(int, sync_at.split(":"))
+        sync_time = datetime.now(timezone)
+        sync_time = sync_time.replace(hour=h, minute=m, second=0)
+        # If the time has already passed, assume the user meant that time
+        # tomorrow
+        if sync_time < datetime.now(timezone):
+            sync_time += timedelta(days=1)
+
+        if re_run:
+            if not re_run_rate:
+                _ = await interaction.response.send_message(
+                    (
+                        "If you want the sync to automatically re-run you "
+                        "need to configure how often it should do so"
+                    ),
+                    ephemeral=True,
+                )
+                return
+            else:
+                # TODO: Make sure we support both DD:HH:MM and HH:MM
+                d, h, m = map(int, re_run_rate.split(":"))
+                re_run_obj = timedelta(days=d, hours=h, minutes=m, seconds=0)
+        else:
+            re_run_obj = None
+
+        sync_info = SyncInfo(sync_time, interaction.guild, re_run, re_run_obj)
+        self.add_sync_time(sync_info)
+        # TODO: Make this output nicer
+        _ = await interaction.response.send_message(
+            (
+                f"Scheduled sync for {sync_info.run_at} "
+                f"with re_run set to {re_run} and a rate of {re_run_obj}"
+            )
+        )
 
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    async def set_timezone(self, interaction: Interaction) -> None:
+    @app_commands.describe(tz="Olson timezone string (Europe/Stockholm)")
+    @app_commands.rename(tz="timezone")
+    async def set_timezone(self, interaction: Interaction, tz: str) -> None:
         """
         Sets the timezone of the bot sync to the given value
         """
-        # TODO: Allow the user to set the timezone to a valid option.
-        # Maybe use autocomplete to make this easier?
-        # Set the timezone and the timezone for the sync_task timer to the
-        # given value
-        pass
+        assert interaction.guild_id
+        # TODO: Do error handling and make sure the timezone is valid
+        # Also write an autocomplete handler to make sure this gets passed
+        # properly.
+        await self.bot.db.set_setting(
+            interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone", tz
+        )
+        _ = await interaction.response.send_message(f"Set timezone to {tz}")
 
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
