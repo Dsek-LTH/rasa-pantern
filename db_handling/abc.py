@@ -1,10 +1,15 @@
 from abc import ABC, abstractmethod
+from datetime import timedelta
+
+from discord import datetime
 
 
 class Database(ABC):
     @abstractmethod
     async def execute_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
     ) -> None:
         """Execute a query in the database.
 
@@ -16,8 +21,10 @@ class Database(ABC):
 
     @abstractmethod
     async def execute_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> dict[str, str | int] | None:
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
+    ) -> dict[str, str | int | datetime | timedelta | bool] | None:
         """Execute a query in the database and parses the first found entry
         into a dictionary.
 
@@ -33,8 +40,10 @@ class Database(ABC):
 
     @abstractmethod
     async def execute_multiple_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> list[dict[str, str | int]] | None:
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
+    ) -> list[dict[str, str | int | datetime | timedelta | bool]] | None:
         """Execute a query in the database and parses all found entries into
         a list of dictionaries.
 

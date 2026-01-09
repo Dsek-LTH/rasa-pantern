@@ -3,9 +3,9 @@ import json
 import os
 import zoneinfo
 from collections import defaultdict
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from multiprocessing import Value
 from typing import final, override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,13 +16,14 @@ from discord import (
     Guild,
     HTTPException,
     Interaction,
+    NotFound,
     Permissions,
     Role,
     app_commands,
 )
-from discord.ext import commands, tasks
+from discord.ext import commands
 
-from helpers import CogSetting
+from helpers import CogSetting, SyncInfo
 from main import PanternBot
 
 WEBSITE_DB_URL = os.getenv("WEBSITE_DB_URL")
@@ -70,14 +71,6 @@ class SyncOutputData:
             - self.failed_users
             - self.non_changed_users
         )
-
-
-@dataclass
-class SyncInfo:
-    run_at: datetime
-    guild: discord.Guild
-    re_run: bool = False
-    re_run_rate: timedelta | None = None
 
 
 async def get_external_role_list() -> dict[str, list[str]]:
@@ -159,25 +152,61 @@ class RoleSyncHandler(commands.Cog):
 
     @override
     async def cog_load(self) -> None:
-        # TODO: load timezone and synctime from database here so we can run the
-        # sync task only when we need to
-        return await super().cog_load()
+        await super().cog_load()
+        sync_times = await self.bot.db.get_all_sync_jobs()
+        # TODO: Check so that we can automatically remove any jobs that run on
+        # the same minute
+        guilds_to_sync: dict[int, SyncInfo] = {}
+        for job in sync_times:
+            job.run_at = job.run_at.astimezone(timezone.utc)
+
+            if job.run_at < datetime.now(timezone.utc):
+                temp_job = replace(job, re_run=False)
+                guilds_to_sync[job.guild_id] = temp_job
+                await self.bot.db.remove_sync_job(job)
+
+                if not job.re_run:
+                    continue
+
+                assert job.re_run_rate
+                job.run_at = datetime.now(timezone.utc) + job.re_run_rate
+                await self.bot.db.create_sync_job(job)
+
+            self.sync_times.append(job)
+
+        self.sync_times = sync_times
+        print("\t\tloaded sync jobs from database")
+        if guilds_to_sync:
+            print(
+                (
+                    f"\t\tWe have missed syncing {len(guilds_to_sync)} "
+                    "server(s) whilst offline. Syncing them now."
+                )
+            )
+            synced_gulids: list[int] = []
+            for guild_id in guilds_to_sync:
+                if guild_id not in synced_gulids:
+                    await self.run_timer_sync(guilds_to_sync[guild_id])
+                    synced_gulids.append(guild_id)
 
     @override
     async def cog_unload(self) -> None:
         # TODO: Consider if we need to handle what happens if the cog gets
         # unloaded whlist running a sync, a dirty flag in the database maybe?
+        # We could just ingore it tbh and allow admins to re-run
         await super().cog_unload()
         _ = self.sync_timer_task.cancel()
 
-    def add_sync_time(self, sync_info: SyncInfo):
+    async def add_sync_time(self, sync_info: SyncInfo):
         self.sync_times.append(sync_info)
+        await self.bot.db.create_sync_job(sync_info)
         self.sync_times.sort(key=lambda si: si.run_at)
         self.add_time_event.set()
 
     async def sync_timer(self) -> None:
         while True:
             if not self.sync_times:
+                # We could just ingore it tbh and allow admins to re-run
                 self.add_time_event.clear()
                 _ = await self.add_time_event.wait()
                 continue
@@ -203,22 +232,48 @@ class RoleSyncHandler(commands.Cog):
             _ = asyncio.create_task(self.run_timer_sync(sync_info))
 
     async def run_timer_sync(self, sync_info: SyncInfo):
-        output_data = await self._sync(sync_info.guild)
+        guild = self.bot.get_guild(sync_info.guild_id)
+        if not guild:
+            try:
+                guild = await self.bot.fetch_guild(sync_info.guild_id)
+            except NotFound as e:
+                print(
+                    (
+                        "ERROR, could not access guild with id: "
+                        f"{sync_info.guild_id} Stopping auto-sync\n"
+                        f"Traceback: {e} "
+                    )
+                )
+                return
+            except HTTPException as e:
+                print(
+                    (
+                        "ERROR, Network issue when syncing guild with id"
+                        f"{sync_info.guild_id} Stopping auto-sync\n"
+                        f"Traceback: {e} "
+                    )
+                )
+                return
+
+        output_data = await self._sync(guild)
+        await self.bot.db.remove_sync_job(sync_info)
+
         print(
             (
                 f"auto sync run at: {sync_info.run_at} "
-                f"in guild {sync_info.guild.name} "
+                f"in guild {guild.name} "
                 "has completed"
             )
         )
         print(output_data)
         if len(self.sync_times) > 0:
-            print(self.sync_times)
+            # print(self.sync_times)
+            pass
         if sync_info.re_run:
             if sync_info.re_run_rate:
                 new_sync_info = sync_info
                 new_sync_info.run_at = sync_info.run_at + sync_info.re_run_rate
-                self.add_sync_time(new_sync_info)
+                await self.add_sync_time(new_sync_info)
                 print(f"Re-scheduled sync for {new_sync_info.run_at}")
             else:
                 print(
@@ -525,7 +580,6 @@ class RoleSyncHandler(commands.Cog):
         # TODO: Add function to manage running autosync tasks and close those
         # we no longer want. I'm thinking Components V.2 Is a perfect fit for
         # this
-        assert interaction.guild
         assert interaction.guild_id
         try:
             # Just checking that it's possible to create a datetime object
@@ -599,8 +653,10 @@ class RoleSyncHandler(commands.Cog):
         else:
             re_run_obj = None
 
-        sync_info = SyncInfo(sync_time, interaction.guild, re_run, re_run_obj)
-        self.add_sync_time(sync_info)
+        sync_info = SyncInfo(
+            sync_time, interaction.guild_id, re_run, re_run_obj
+        )
+        await self.add_sync_time(sync_info)
         recurring: str = "."
         if re_run:
             recurring = (
@@ -641,9 +697,24 @@ class RoleSyncHandler(commands.Cog):
             )
             return
 
-        await self.bot.db.set_setting(
-            interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone", tz
-        )
+        # TODO: Implement an upsert in the database so we can get around this
+        # ugly if statement
+        if await self.bot.db.get_setting(
+            interaction.guild_id, CogSetting.ROLE_SYNC_HANDLER, "timezone"
+        ):
+            await self.bot.db.update_setting(
+                interaction.guild_id,
+                CogSetting.ROLE_SYNC_HANDLER,
+                "timezone",
+                tz,
+            )
+        else:
+            await self.bot.db.set_setting(
+                interaction.guild_id,
+                CogSetting.ROLE_SYNC_HANDLER,
+                "timezone",
+                tz,
+            )
         _ = await interaction.response.send_message(f"Set timezone to {tz}")
 
     @app_commands.guild_only()

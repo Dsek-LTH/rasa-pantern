@@ -1,10 +1,10 @@
 import asyncio
 import re
+from datetime import datetime, timedelta, timezone
+from types import NoneType
 from typing import final
 
-from discord import user
-
-from helpers import CogSetting, RoleMapping
+from helpers import CogSetting, RoleMapping, SyncInfo
 
 from . import postgres_backend, sqlite_backend
 from .abc import Database
@@ -25,7 +25,7 @@ class DBHandler:
             guild_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             UNIQUE(guild_id, name)
-        );
+);
         """
         await self.db.execute_query(
             self.fix_postgres_fields(is_postgres, create_drinks_table)
@@ -89,6 +89,20 @@ class DBHandler:
             self.fix_postgres_fields(is_postgres, create_settings_table)
         )
         print("created settings table")
+
+        create_sync_jobs_table = """
+        CREATE TABLE IF NOT EXISTS sync_jobs (
+            id INTEGER PRIMARY KEY NOT NULL,
+            run_at_time TIMESTAMP NOT NULL,
+            guild_id INTEGER NOT NULL,
+            re_run BOOLEAN NOT NULL,
+            re_run_rate INTERVAL
+        );
+        """
+        await self.db.execute_query(
+            self.fix_postgres_fields(is_postgres, create_sync_jobs_table)
+        )
+        print("created sync_jobs table")
 
     def fix_postgres_fields(self, is_postgres: bool, query: str) -> str:
         if is_postgres:
@@ -471,7 +485,7 @@ class DBHandler:
             (role_id, discord_role_id, message_id),
         )
 
-    async def delete_role_config(self, message_id: int) -> None:
+    async def remove_role_config(self, message_id: int) -> None:
         """
         Removes a given role mapping from the db.
 
@@ -529,12 +543,19 @@ class DBHandler:
         )
         if not role_config:
             return None
+
+        assert isinstance(role_config["role_id"], str)
+        assert isinstance(role_config["channel_id"], int)
+        assert isinstance(role_config["discord_role_id"], int)
+        assert isinstance(role_config["guild_id"], int)
+        assert isinstance(role_config["guild_id"], int)
+
         return RoleMapping(
-            str(role_config["role_id"]),
-            int(role_config["discord_role_id"]),
-            int(role_config["guild_id"]),
+            role_config["role_id"],
+            role_config["discord_role_id"],
+            role_config["guild_id"],
             message_id,
-            int(role_config["channel_id"]),
+            role_config["channel_id"],
         )
 
     async def get_all_role_configs(self) -> list[RoleMapping]:
@@ -634,6 +655,7 @@ class DBHandler:
             get_discord_id_query, (external_id,)
         )
         if response:
+            assert isinstance(response["user_id"], str)
             return int(response["user_id"])
         return None
 
@@ -772,7 +794,9 @@ class DBHandler:
             return None
         return_dict: dict[int, str] = {}
         for setting in db_return:
-            return_dict[int(setting["guild_id"])] = str(setting["value"])
+            assert isinstance(setting["value"], str)
+            assert isinstance(setting["guild_id"], int)
+            return_dict[setting["guild_id"]] = setting["value"]
         return return_dict
 
     async def remove_setting(
@@ -801,6 +825,143 @@ class DBHandler:
                 guild_id,
                 cog.value,
                 setting_name,
+            ),
+        )
+
+    # ------------------------------------------------------
+    # Sync jobs
+    async def create_sync_job(self, sync_info: SyncInfo) -> None:
+        """
+        Creates a sync job in the database.
+
+        Args:
+            sync_info (SyncInfo): The task to add to the database.
+        """
+        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(
+            tzinfo=None
+        )
+        create_sync_query = """
+            INSERT INTO
+                sync_jobs(
+                    run_at_time,
+                    guild_id,
+                    re_run,
+                    re_run_rate
+                )
+            VALUES
+                (?, ?, ?, ?)
+        """
+        await self.db.execute_query(
+            create_sync_query,
+            (
+                naive_run_at,
+                sync_info.guild_id,
+                sync_info.re_run,
+                sync_info.re_run_rate,
+            ),
+        )
+        ...
+
+    async def get_next_sync_jobs(self, guild_id: int) -> SyncInfo | None:
+        """
+        Get the next sync job for the given guild.
+
+        The returned SyncInfo object have naive timestamps in UTC
+        Args:
+            guild_id (int): The guild to to remove the setting from.
+        """
+        get_next_sync_query = """
+            SELECT
+                run_at_time,
+                re_run,
+                re_run_rate
+            FROM
+                sync_jobs
+            WHERE
+                guild_id = ?
+            ORDER BY run_at_time ASC
+            LIMIT 1
+        """
+        jobs = await self.db.execute_read_query(
+            get_next_sync_query, (guild_id,)
+        )
+        if not jobs:
+            return None
+
+        assert isinstance(jobs["run_at_time"], datetime)
+        assert isinstance(jobs["re_run"], bool)
+        assert isinstance(jobs["re_run_rate"], (timedelta, NoneType))
+
+        return SyncInfo(
+            jobs["run_at_time"],
+            guild_id,
+            jobs["re_run"],
+            jobs["re_run_rate"],
+        )
+
+    async def get_all_sync_jobs(self) -> list[SyncInfo]:
+        """
+        Get all sync jobs for the given guild.
+
+        The returned SyncInfo object have naive timestamps in UTC
+        Args:
+            guild_id (int): The guild to to remove the setting from.
+        """
+        get_all_syncs_query = """
+            SELECT
+                run_at_time,
+                guild_id,
+                re_run,
+                re_run_rate
+            FROM
+                sync_jobs
+            ORDER BY run_at_time ASC
+        """
+        jobs = await self.db.execute_multiple_read_query(get_all_syncs_query)
+        res: list[SyncInfo] = []
+        if jobs:
+            for job in jobs:
+                assert isinstance(job["run_at_time"], datetime)
+                assert isinstance(job["guild_id"], int)
+                assert isinstance(job["re_run"], bool)
+                assert isinstance(job["re_run_rate"], (timedelta, NoneType))
+
+                res.append(
+                    SyncInfo(
+                        job["run_at_time"],
+                        job["guild_id"],
+                        job["re_run"],
+                        job["re_run_rate"],
+                    )
+                )
+        return res
+
+    async def remove_sync_job(self, sync_info: SyncInfo) -> None:
+        """
+        Delete the given sync job from the database.
+
+        Args:
+            sync_info (SyncInfo): The SyncInfo for the task to remove from the
+            database.
+        """
+        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(
+            tzinfo=None
+        )
+        remove_sync_job_query = """
+            DELETE FROM sync_jobs
+            WHERE
+                guild_id = ?
+            AND
+                run_at_time = ?
+            AND
+                re_run = ?
+        """
+        await self.db.execute_query(
+            remove_sync_job_query,
+            (
+                sync_info.guild_id,
+                naive_run_at,
+                sync_info.re_run,
             ),
         )
 

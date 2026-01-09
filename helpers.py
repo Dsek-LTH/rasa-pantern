@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import final, override
 
@@ -31,3 +33,11 @@ class CogSetting(Enum):
     CONFIGURE_DRINKS_HANDLER = 1
     ROLE_SYNC_CONFIG_HANDLER = 2
     ROLE_SYNC_HANDLER = 3
+
+
+@dataclass
+class SyncInfo:
+    run_at: datetime
+    guild_id: int
+    re_run: bool = False
+    re_run_rate: timedelta | None = None

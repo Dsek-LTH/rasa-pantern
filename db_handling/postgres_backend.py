@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 from typing import cast, override
 
 import asyncpg
@@ -31,7 +32,9 @@ class PostresqlHandler(Database):
 
     @override
     async def execute_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
     ) -> None:
         assert self.pool
         async with self.pool.acquire() as conn:
@@ -43,8 +46,10 @@ class PostresqlHandler(Database):
 
     @override
     async def execute_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> dict[str, str | int] | None:
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
+    ) -> dict[str, str | int | datetime | timedelta | bool] | None:
         assert self.pool
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -52,14 +57,19 @@ class PostresqlHandler(Database):
                     row = await conn.fetchrow(self.translate_sql(query), *vars)
                     if row is None:
                         return None
-                    return cast(dict[str, str | int], dict(row))
+                    return cast(
+                        dict[str, str | int | datetime | timedelta | bool],
+                        dict(row),
+                    )
                 except asyncpg.PostgresError as e:
                     print(f"DB error: {e} occured")
 
     @override
     async def execute_multiple_read_query(
-        self, query: str, vars: tuple[str | int, ...] = ()
-    ) -> list[dict[str, str | int]] | None:
+        self,
+        query: str,
+        vars: tuple[str | int | datetime | timedelta | bool | None, ...] = (),
+    ) -> list[dict[str, str | int | datetime | timedelta | bool]] | None:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 try:
@@ -67,7 +77,11 @@ class PostresqlHandler(Database):
                     if not rows:
                         return None
                     return [
-                        cast(dict[str, str | int], dict(row)) for row in rows
+                        cast(
+                            dict[str, str | int | datetime | timedelta | bool],
+                            dict(row),
+                        )
+                        for row in rows
                     ]
                 except asyncpg.PostgresError as e:
                     print(f"DB error: {e} occured")
