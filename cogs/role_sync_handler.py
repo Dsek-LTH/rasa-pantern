@@ -267,7 +267,7 @@ class RoleSyncHandler(commands.Cog):
         )
         print(output_data)
         if len(self.sync_times) > 0:
-            # print(self.sync_times)
+            print(self.sync_times)
             pass
         if sync_info.re_run:
             if sync_info.re_run_rate:
@@ -290,10 +290,11 @@ class RoleSyncHandler(commands.Cog):
         # out of ram (not that we probably ever will on our hardware, but it
         # would be nice to keep in mind).
         print("starting sync")
-        if bool(
+        if (
             await self.bot.db.get_setting(
                 guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
             )
+            == "True"
         ):
             print("!!!RUNNING IN DRY MODE!!!")
 
@@ -427,10 +428,11 @@ class RoleSyncHandler(commands.Cog):
                 )
             )
             try:
-                if not bool(
+                if (
                     await self.bot.db.get_setting(
                         guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
                     )
+                    == "True"
                 ):
                     _ = await member.edit(
                         roles=[
@@ -487,11 +489,13 @@ class RoleSyncHandler(commands.Cog):
             if len(self.sync_times) > 0
             else "No automatic sync running."
         )
-        dry_run = bool(
+        dry_run = (
             await self.bot.db.get_setting(
                 interaction.guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
             )
+            == "True"
         )
+
         dry_mode_string = "# WARNING: RUNNING IN DRY MODE\n" if dry_run else ""
         _ = await interaction.followup.send(
             (
@@ -577,9 +581,6 @@ class RoleSyncHandler(commands.Cog):
         """
         Sets the bot to automatically sync at the given time and interval.
         """
-        # TODO: Add function to manage running autosync tasks and close those
-        # we no longer want. I'm thinking Components V.2 Is a perfect fit for
-        # this
         assert interaction.guild_id
         try:
             # Just checking that it's possible to create a datetime object
@@ -717,6 +718,7 @@ class RoleSyncHandler(commands.Cog):
             )
         _ = await interaction.response.send_message(f"Set timezone to {tz}")
 
+    @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     @app_commands.describe(enabled="Whether to run in dry_run mode or not")
@@ -728,12 +730,53 @@ class RoleSyncHandler(commands.Cog):
         (i.e. if the bot should refrain from changing any roles or not)
         """
         assert interaction.guild_id
-        await self.bot.db.set_setting(
+        # TODO: Implement an upsert in the database so we can get around this
+        # ugly if statement
+        if await self.bot.db.get_setting(
             interaction.guild_id,
             CogSetting.ROLE_SYNC_HANDLER,
             "dry_run",
-            str(enabled),
+        ):
+            await self.bot.db.update_setting(
+                interaction.guild_id,
+                CogSetting.ROLE_SYNC_HANDLER,
+                "dry_run",
+                str(enabled),
+            )
+        else:
+            await self.bot.db.set_setting(
+                interaction.guild_id,
+                CogSetting.ROLE_SYNC_HANDLER,
+                "dry_run",
+                str(enabled),
+            )
+        _ = await interaction.response.send_message(
+            f"Set dry-run to: {enabled}"
         )
+
+    @app_commands.command()
+    @app_commands.guild_only()
+    @app_commands.default_permissions(Permissions(manage_roles=True))
+    async def list_autosyncs(self, interaction: Interaction):
+        """lists all automatic syncs the bot is currenlty waiting for"""
+        # TODO: Make this interactible so that the user can manage the
+        # autosyncs
+        # manage running autosync tasks and close those
+        # we no longer want. I'm thinking Components V.2 Is a perfect fit for
+        # this
+        job_strings: list[str] = []
+        for job in self.sync_times:
+            if job.guild_id == interaction.guild_id:
+                job_strings.append(
+                    (
+                        f"<t:{int(job.run_at.timestamp())}:f>: "
+                        f"<t:{int(job.run_at.timestamp())}:R>"
+                    )
+                )
+        output = "List of next sync times: \n" + "\n".join(
+            job_strings,
+        )
+        _ = await interaction.response.send_message(output)
 
 
 # ----------------------MAIN PROGRAM----------------------
