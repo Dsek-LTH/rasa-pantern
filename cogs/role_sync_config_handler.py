@@ -176,7 +176,7 @@ class RoleConfigView(ui.LayoutView):
     async def remove_role_mapping(self, interaction: Interaction) -> None:
         assert self.message
         assert self.role_map
-        _ = await self.db.delete_role_config(self.message.id)
+        _ = await self.db.remove_role_config(self.message.id)
         _ = await self.message.delete()
         _ = await interaction.response.send_message(
             (
