@@ -71,7 +71,6 @@ class PanternBot(commands.Bot):
         print("loading cogs:")
         early_load_extensions = [
             "cogs.drinks_handler",
-            "cogs.role_sync_handler",
         ]
         for extension in early_load_extensions:
             try:
@@ -90,6 +89,7 @@ class PanternBot(commands.Bot):
         print("Loading late cogs:")
         late_load_extensions = [
             "cogs.configure_drinks_handler",
+            "cogs.role_sync_handler",
             "cogs.role_sync_config_handler",
         ]
         for extension in late_load_extensions:

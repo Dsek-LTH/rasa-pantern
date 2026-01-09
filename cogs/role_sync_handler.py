@@ -160,19 +160,19 @@ class RoleSyncHandler(commands.Cog):
         for job in sync_times:
             job.run_at = job.run_at.astimezone(timezone.utc)
 
+            await self.bot.db.remove_sync_job(job)
+
             if job.run_at < datetime.now(timezone.utc):
                 temp_job = replace(job, re_run=False)
                 guilds_to_sync[job.guild_id] = temp_job
-                await self.bot.db.remove_sync_job(job)
 
                 if not job.re_run:
                     continue
 
                 assert job.re_run_rate
                 job.run_at = datetime.now(timezone.utc) + job.re_run_rate
-                await self.bot.db.create_sync_job(job)
 
-            self.sync_times.append(job)
+            await self.add_sync_time(job)
 
         self.sync_times = sync_times
         print("\t\tloaded sync jobs from database")
@@ -267,7 +267,7 @@ class RoleSyncHandler(commands.Cog):
         )
         print(output_data)
         if len(self.sync_times) > 0:
-            print(self.sync_times)
+            # print(self.sync_times)
             pass
         if sync_info.re_run:
             if sync_info.re_run_rate:
