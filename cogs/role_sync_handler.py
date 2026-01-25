@@ -3,7 +3,6 @@ import json
 import os
 import zoneinfo
 from collections import defaultdict
-from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import final, override
@@ -90,8 +89,7 @@ async def get_external_role_list() -> dict[str, list[str]]:
         # This would get rid of most old users, and stop us from having to
         # worry about them.
         # TODO: CPU core are hard coded in this list. That might not be great..
-        rows = await conn.fetch(
-            """
+        rows = await conn.fetch("""
                 SELECT
                   student_id AS username,
                   COALESCE(
@@ -126,8 +124,7 @@ async def get_external_role_list() -> dict[str, list[str]]:
                 LEFT JOIN positions
                   ON mandates.position_id = positions.id
                 GROUP BY student_id;
-            """
-        )
+            """)
     finally:
         await conn.close()
 
@@ -432,7 +429,7 @@ class RoleSyncHandler(commands.Cog):
                     await self.bot.db.get_setting(
                         guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
                     )
-                    == "True"
+                    == "False"
                 ):
                     _ = await member.edit(
                         roles=[
@@ -440,6 +437,7 @@ class RoleSyncHandler(commands.Cog):
                         ]
                     )
                 pass
+
             except discord.Forbidden as e:
                 user_role_list = [
                     role_LUT[role_id].name for role_id in new_roles[user_id]
