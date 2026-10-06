@@ -138,28 +138,30 @@ class RoleSyncHandler(commands.Cog):
     @override
     async def cog_load(self) -> None:
         await super().cog_load()
-        sync_times = await self.bot.db.get_all_sync_jobs()
+        stored_jobs = await self.bot.db.get_all_sync_jobs()
         # TODO: Check so that we can automatically remove any jobs that run on
         # the same minute
         guilds_to_sync: dict[int, SyncInfo] = {}
-        for job in sync_times:
+        for job in stored_jobs:
             job.run_at = job.run_at.astimezone(timezone.utc)
 
-            await self.bot.db.remove_sync_job(job)
-
-            if job.run_at < datetime.now(timezone.utc):
-                temp_job = replace(job, re_run=False)
-                guilds_to_sync[job.guild_id] = temp_job
+            now = datetime.now(timezone.utc)
+            if job.run_at <= now:
+                await self.bot.db.remove_sync_job(job)
+                # Job was missed whilst bot was offline, run now
+                guilds_to_sync[job.guild_id] = replace(job, re_run=False)
 
                 if not job.re_run:
                     continue
 
                 assert job.re_run_rate
-                job.run_at = datetime.now(timezone.utc) + job.re_run_rate
+                while job.run_at <= now:
+                    job.run_at += job.re_run_rate
 
-            await self.add_sync_time(job)
+                await self.add_sync_time(job)
+            else:
+                await self.add_sync_time(job, False)
 
-        self.sync_times = sync_times
         print("\t\tloaded sync jobs from database")
         if guilds_to_sync:
             print(
@@ -170,9 +172,7 @@ class RoleSyncHandler(commands.Cog):
             )
             synced_gulids: list[int] = []
             for guild_id in guilds_to_sync:
-                if guild_id not in synced_gulids:
-                    await self.run_timer_sync(guilds_to_sync[guild_id])
-                    synced_gulids.append(guild_id)
+                await self.run_timer_sync(guilds_to_sync[guild_id])
 
     @override
     async def cog_unload(self) -> None:
@@ -182,9 +182,10 @@ class RoleSyncHandler(commands.Cog):
         await super().cog_unload()
         _ = self.sync_timer_task.cancel()
 
-    async def add_sync_time(self, sync_info: SyncInfo):
+    async def add_sync_time(self, sync_info: SyncInfo, add_to_database: bool = True):
         self.sync_times.append(sync_info)
-        await self.bot.db.create_sync_job(sync_info)
+        if add_to_database:
+            await self.bot.db.create_sync_job(sync_info)
         self.sync_times.sort(key=lambda si: si.run_at)
         self.add_time_event.set()
 
@@ -446,9 +447,11 @@ class RoleSyncHandler(commands.Cog):
 
         data = await self._sync(interaction.guild)
 
+        guild_sync_times = [job for job in self.sync_times if job.guild_id == interaction.guild_id]
+
         sync_string = (
-            ("Next automatic sync " f"<t:{int(self.sync_times[0].run_at.timestamp())}:R>.")
-            if len(self.sync_times) > 0
+            ("Next automatic sync " f"<t:{int(guild_sync_times[0].run_at.timestamp())}:R>.")
+            if guild_sync_times
             else "No automatic sync running."
         )
         dry_run = (
@@ -559,9 +562,9 @@ class RoleSyncHandler(commands.Cog):
             return
         timezone = ZoneInfo(timezone)
 
-        h, m = map(int, sync_at.split(":"))
+        hours, minutes = map(int, sync_at.split(":"))
         sync_time = datetime.now(timezone)
-        sync_time = sync_time.replace(hour=h, minute=m, second=0)
+        sync_time = sync_time.replace(hour=hours, minute=minutes, second=0)
         # If the time has already passed, assume the user meant that time
         # tomorrow
         if sync_time < datetime.now(timezone):
@@ -577,30 +580,40 @@ class RoleSyncHandler(commands.Cog):
                     ephemeral=True,
                 )
                 return
-            else:
-                try:
-                    split = re_run_rate.split(":")
-                    if len(split) == 3:
-                        # Checking so input is valid
-                        _ = int(split[0])
-                        short_rate = f"{re_run_rate[1]}:{re_run_rate[2]}"
-                        _ = datetime.strptime(short_rate, "%H:%M").time()
-                    else:
-                        _ = datetime.strptime(re_run_rate, "%H:%M").time()
-                        re_run_rate = "0:" + re_run_rate
+            try:
+                split = re_run_rate.split(":")
+                if len(split) == 2:
+                    hours, minutes = map(int, split)
+                    days = hours // 24
+                    hours = hours % 24
 
-                except ValueError:
+                elif len(split) == 3:
+                    days, hours, minutes = map(int, split)
+                    days += hours // 24
+                    hours = hours % 24
+
+                else:
+                    raise ValueError
+
+                if days < 0 or not 0 <= hours <= 23 or not 0 <= minutes <= 59:
+                    raise ValueError
+
+                if days == 0 and hours > 0:
                     _ = await interaction.response.send_message(
-                        (
-                            f'"{re_run_rate}" is an invalid format for '
-                            "re_run_rate. Use HH:MM or DD:HH:MM in "
-                            "24-hour format."
-                        ),
-                        ephemeral=True,
+                        f'"{re_run_rate} is too small. It has to be at least one hour'
                     )
-                    return
-                d, h, m = map(int, re_run_rate.split(":"))
-                re_run_obj = timedelta(days=d, hours=h, minutes=m, seconds=0)
+                re_run_obj = timedelta(days=days, hours=hours, minutes=minutes, seconds=0)
+
+            except ValueError:
+                _ = await interaction.response.send_message(
+                    (
+                        f'"{re_run_rate}" is an invalid format for '
+                        "re_run_rate. Use HH:MM or DD:HH:MM in "
+                        "24-hour format."
+                    ),
+                    ephemeral=True,
+                )
+                return
         else:
             re_run_obj = None
 
