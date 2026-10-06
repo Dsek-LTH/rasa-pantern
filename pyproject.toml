@@ -11,3 +11,7 @@ dependencies = [
     "humanize>=4.16.0",
     "python-dotenv>=1.2.4",
 ]
+
+[tool.black]
+target-version= ["py313"]
+line-length = 100
