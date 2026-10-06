@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import timedelta
-
-from discord import datetime
+from datetime import datetime, timedelta
 
 
 class Database(ABC):

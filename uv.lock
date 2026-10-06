@@ -593,9 +593,9 @@ dependencies = [
 requires-dist = [
     { name = "asqlite", specifier = ">=2.0.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "discord-py", specifier = ">=2.6.4" },
-    { name = "humanize", specifier = ">=4.15.0" },
-    { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "discord-py", specifier = ">=2.7.1" },
+    { name = "humanize", specifier = ">=4.16.0" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
 ]
 
 [[package]]
