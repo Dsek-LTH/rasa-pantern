@@ -15,6 +15,21 @@ Managed by UV
 
 3. Run with `uv run main.py`
 
+## Running with podman/docker and postgres
+
+**This is the recomended option.**
+
+1. Open the compose file and uncomment the setup command line `command: uv run
+   -m db_handling.handler`
+
+2. Fill in all environment variables in the compose file
+
+3. Start the services with `podman compose up`
+
+4. Remove the command line from the compose file
+
+5. Start the proper Bot service with `podman compose up -d`
+
 ## Running with podman/docker and sqlite
 
 1. Set up database to be volume mounted:
@@ -48,18 +63,3 @@ mounted database folder
 The reason we mount a folder and not just the file is because sqlite needs to
 create and write to a few additional files apart from the database itself, and
 thus we need a folder with write access.
-
-## Running with podman/docker and postgres
-
-**This is the recomended option.**
-
-1. Open the compose file and uncomment the setup command line `command: uv run
-   -m db_handling.handler`
-
-2. Fill in all environment variables in the compose file
-
-3. Start the services with `podman compose up`
-
-4. Remove the command line from the compose file
-
-5. Start the proper Bot service with `podman compose up -d`
