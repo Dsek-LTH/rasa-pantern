@@ -27,16 +27,12 @@ class ChooseDrinkView(discord.ui.View):
         self.db: DBHandler = db
         self._count: int = 0
         super().__init__(timeout=None)
-        selector: ChooseDrinkSelector = ChooseDrinkSelector(
-            message_id, guild_id, drink_list, db
-        )
+        selector: ChooseDrinkSelector = ChooseDrinkSelector(message_id, guild_id, drink_list, db)
         self.selector: ChooseDrinkSelector = selector
         _ = self.add_item(selector)
 
     @classmethod
-    async def create(
-        cls, message_id: int, guild_id: int, db: DBHandler
-    ) -> ChooseDrinkView:
+    async def create(cls, message_id: int, guild_id: int, db: DBHandler) -> ChooseDrinkView:
         drink_list = await db.get_drink_option_list(guild_id)
         return ChooseDrinkView(message_id, guild_id, drink_list, db)
 
@@ -58,8 +54,7 @@ class ChooseDrinkView(discord.ui.View):
         print(self.id + " timed out")
         if self.message:
             _ = await self.message.edit(
-                content="Drinks have been drunk!\n-# Total drinks: "
-                + str(self._count),
+                content="Drinks have been drunk!\n-# Total drinks: " + str(self._count),
                 view=self,
             )
         await self.db.remove_tally(self.message_id)
@@ -99,13 +94,9 @@ class ChooseDrinkSelector(discord.ui.Select[ChooseDrinkView]):
             )
             return
         if not self.view:
-            raise (
-                ReferenceError("This should actually be impossible to reach")
-            )
+            raise (ReferenceError("This should actually be impossible to reach"))
         if not self.view.message:
-            print(
-                "Message does not exist in guild " + str(interaction.guild_id)
-            )
+            print("Message does not exist in guild " + str(interaction.guild_id))
             _ = await interaction.response.send_message(
                 "ERROR, failed to find message, please contact an admin"
             )
@@ -161,9 +152,7 @@ class ShowFurtherTallyView(discord.ui.View):
 
         message.append("```")
 
-        _ = await interaction.response.send_message(
-            "\n".join(message), ephemeral=True
-        )
+        _ = await interaction.response.send_message("\n".join(message), ephemeral=True)
 
 
 @final
@@ -202,14 +191,10 @@ class DrinkHandler(commands.Cog):
             raise (ValueError("channel doesn't exist, failing"))
         _ = await interaction.response.send_message("Pick a drink:")
         message = await interaction.original_response()
-        view = await ChooseDrinkView.create(
-            message.id, interaction.guild_id, self.bot.db
-        )
+        view = await ChooseDrinkView.create(message.id, interaction.guild_id, self.bot.db)
         updated_message = await message.edit(view=view)
         view.message = updated_message
-        await self.bot.db.create_tally(
-            updated_message.id, interaction.guild_id
-        )
+        await self.bot.db.create_tally(updated_message.id, interaction.guild_id)
 
     @app_commands.guild_only()
     async def tally_drinks_callback(
@@ -256,9 +241,7 @@ async def setup(bot: PanternBot) -> None:
     tallies = await bot.db.get_all_tallies()
     for message_id, guild_id in tallies:
         print(f"\t\t\tloading tally in message: {message_id}")
-        bot.add_view(
-            await ChooseDrinkView.create(message_id, guild_id, bot.db)
-        )
+        bot.add_view(await ChooseDrinkView.create(message_id, guild_id, bot.db))
     if not tallies:
         print("\t\t\tNo tallies in db!")
     await bot.add_cog(DrinkHandler(bot))

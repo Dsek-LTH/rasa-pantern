@@ -27,9 +27,7 @@ class DBHandler:
             UNIQUE(guild_id, name)
 );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_drinks_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_drinks_table))
         print("created drinks table")
 
         create_drunk_table = """
@@ -42,9 +40,7 @@ class DBHandler:
             UNIQUE(guild_id, message_id, user_id)
         );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_drunk_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_drunk_table))
         print("created drunk_table")
 
         create_tallies_table = """
@@ -54,9 +50,7 @@ class DBHandler:
             message_id INTEGER UNIQUE NOT NULL
         );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_tallies_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_tallies_table))
         print("created tallies table")
 
         create_role_config_table = """
@@ -70,9 +64,7 @@ class DBHandler:
             UNIQUE(discord_role_id, role_id)
         );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_role_config_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_role_config_table))
         print("created role config table")
 
         create_settings_table = """
@@ -85,9 +77,7 @@ class DBHandler:
             UNIQUE(guild_id, cog, config_name)
         );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_settings_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_settings_table))
         print("created settings table")
 
         create_sync_jobs_table = """
@@ -99,9 +89,7 @@ class DBHandler:
             re_run_rate INTERVAL
         );
         """
-        await self.db.execute_query(
-            self.fix_postgres_fields(is_postgres, create_sync_jobs_table)
-        )
+        await self.db.execute_query(self.fix_postgres_fields(is_postgres, create_sync_jobs_table))
         print("created sync_jobs table")
 
     def fix_postgres_fields(self, is_postgres: bool, query: str) -> str:
@@ -140,9 +128,7 @@ class DBHandler:
             WHERE guild_id = ?;
         """
 
-        drinks = await self.db.execute_multiple_read_query(
-            drink_query, (guild_id,)
-        )
+        drinks = await self.db.execute_multiple_read_query(drink_query, (guild_id,))
         # TODO: error handling here if no drinks exist in system?
         # or do we let that fall upwards?
         drink_list: list[str] = []
@@ -177,11 +163,7 @@ class DBHandler:
             ),
         )
         if drink_exist_check:
-            raise (
-                ValueError(
-                    f"Duplicate drinks {drink_name} in server: {guild_id}"
-                )
-            )
+            raise (ValueError(f"Duplicate drinks {drink_name} in server: {guild_id}"))
         else:
             # Add drink to database:
             drink_create_query = """
@@ -198,9 +180,7 @@ class DBHandler:
                 ),
             )
 
-    async def remove_drink_option(
-        self, guild_id: int, drink_name: str
-    ) -> None:
+    async def remove_drink_option(self, guild_id: int, drink_name: str) -> None:
         """
         Remove a drink option to the list of valid ones for the given guild.
 
@@ -244,10 +224,7 @@ class DBHandler:
         # fine, but you never know...
 
         if drink_name == "nothing":
-            print(
-                "Error: Tried adding empty drink to database for message: "
-                + str(message_id)
-            )
+            print("Error: Tried adding empty drink to database for message: " + str(message_id))
             return False
         current_drink_query = """
             SELECT * FROM drunk_drinks
@@ -299,9 +276,7 @@ class DBHandler:
 
         return new_entry
 
-    async def remove_drunk_drink(
-        self, guild_id: int, message_id: int, user_id: int
-    ) -> None:
+    async def remove_drunk_drink(self, guild_id: int, message_id: int, user_id: int) -> None:
         """
         Remove any drink for a certain user and poll.
 
@@ -327,9 +302,7 @@ class DBHandler:
             ),
         )
 
-    async def get_tally(
-        self, message_id: int, _guild_id: int
-    ) -> dict[str, list[int]]:
+    async def get_tally(self, message_id: int, _guild_id: int) -> dict[str, list[int]]:
         """
         Gets drink tally information from a message.
 
@@ -346,16 +319,12 @@ class DBHandler:
             FROM drunk_drinks
             WHERE message_id = ?;
         """
-        drunk_list = await self.db.execute_multiple_read_query(
-            get_drinks_query, (message_id,)
-        )
+        drunk_list = await self.db.execute_multiple_read_query(get_drinks_query, (message_id,))
 
         res: dict[str, list[int]] = {}
         if drunk_list:
             for drunk in drunk_list:
-                if not isinstance(drunk["name"], str) or not isinstance(
-                    drunk["user_id"], int
-                ):
+                if not isinstance(drunk["name"], str) or not isinstance(drunk["user_id"], int):
                     return res
                 res.setdefault(drunk["name"], []).append(drunk["user_id"])
 
@@ -382,8 +351,7 @@ class DBHandler:
                     tally["guild_id"], int
                 ):
                     print(
-                        "unexpected values in tallies table, "
-                        + "attempting to continue without it"
+                        "unexpected values in tallies table, " + "attempting to continue without it"
                     )
                     continue
                 res.append((tally["message_id"], tally["guild_id"]))
@@ -538,9 +506,7 @@ class DBHandler:
             WHERE message_id = ?
         """
 
-        role_config = await self.db.execute_read_query(
-            get_config_message_query, (message_id,)
-        )
+        role_config = await self.db.execute_read_query(get_config_message_query, (message_id,))
         if not role_config:
             return None
 
@@ -573,9 +539,7 @@ class DBHandler:
                 channel_id
             FROM role_configs
         """
-        config_messages = await self.db.execute_multiple_read_query(
-            get_config_message_query
-        )
+        config_messages = await self.db.execute_multiple_read_query(get_config_message_query)
         return_list: list[RoleMapping] = []
         if config_messages:
             for message in config_messages:
@@ -636,9 +600,7 @@ class DBHandler:
                 )
         return return_list
 
-    async def get_discordId_from_externalId(
-        self, external_id: str
-    ) -> int | None:
+    async def get_discordId_from_externalId(self, external_id: str) -> int | None:
         """
         Gets the discord user id that maps to the given external id.
         Args:
@@ -651,17 +613,13 @@ class DBHandler:
             from connected_accounts
             where stil_id = ?
         """
-        response = await self.db.execute_read_query(
-            get_discord_id_query, (external_id,)
-        )
+        response = await self.db.execute_read_query(get_discord_id_query, (external_id,))
         if response:
             assert isinstance(response["user_id"], str)
             return int(response["user_id"])
         return None
 
-    async def get_externalId_from_discordId_(
-        self, discord_id: int
-    ) -> str | None:
+    async def get_externalId_from_discordId_(self, discord_id: int) -> str | None:
         """
         Gets the external user id that maps to the given discord id.
         Args:
@@ -674,9 +632,7 @@ class DBHandler:
             FROM connected_accounts
             WHERE user_id = ?
         """
-        response = await self.db.execute_read_query(
-            get_discord_id_query, (discord_id,)
-        )
+        response = await self.db.execute_read_query(get_discord_id_query, (discord_id,))
         if response:
             return str(response["stil_id"])
         return None
@@ -735,9 +691,7 @@ class DBHandler:
             (value, guild_id, cog.value, setting_name),
         )
 
-    async def get_setting(
-        self, guild_id: int, cog: CogSetting, setting_name: str
-    ) -> str | None:
+    async def get_setting(self, guild_id: int, cog: CogSetting, setting_name: str) -> str | None:
         """
         Gets the value of a given setting in a given cog and guild.
 
@@ -766,9 +720,7 @@ class DBHandler:
             return None
         return str(table_field["value"])
 
-    async def get_settings(
-        self, cog: CogSetting, setting_name: str
-    ) -> dict[int, str] | None:
+    async def get_settings(self, cog: CogSetting, setting_name: str) -> dict[int, str] | None:
         """
         Gets all settings for the given cog and guild.
 
@@ -799,9 +751,7 @@ class DBHandler:
             return_dict[setting["guild_id"]] = setting["value"]
         return return_dict
 
-    async def remove_setting(
-        self, guild_id: int, cog: CogSetting, setting_name: str
-    ) -> None:
+    async def remove_setting(self, guild_id: int, cog: CogSetting, setting_name: str) -> None:
         """
         Removes the given setting.
 
@@ -837,9 +787,7 @@ class DBHandler:
         Args:
             sync_info (SyncInfo): The task to add to the database.
         """
-        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(
-            tzinfo=None
-        )
+        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(tzinfo=None)
         create_sync_query = """
             INSERT INTO
                 sync_jobs(
@@ -882,9 +830,7 @@ class DBHandler:
             ORDER BY run_at_time ASC
             LIMIT 1
         """
-        jobs = await self.db.execute_read_query(
-            get_next_sync_query, (guild_id,)
-        )
+        jobs = await self.db.execute_read_query(get_next_sync_query, (guild_id,))
         if not jobs:
             return None
 
@@ -944,9 +890,7 @@ class DBHandler:
             sync_info (SyncInfo): The SyncInfo for the task to remove from the
             database.
         """
-        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(
-            tzinfo=None
-        )
+        naive_run_at = sync_info.run_at.astimezone(timezone.utc).replace(tzinfo=None)
         remove_sync_job_query = """
             DELETE FROM sync_jobs
             WHERE

@@ -20,10 +20,8 @@ if __name__ == "__main__":
     except ValueError:
         pass
     except Exception as e:
-        print(
-            f"Thing didn't error properly!\n\
-            Expected ValueError, but instead got {e}"
-        )
+        print(f"Thing didn't error properly!\n\
+            Expected ValueError, but instead got {e}")
 
     asyncio.run(db.remove_drink_option(-1, "testing_drink"))
     if not asyncio.run(db.get_drink_option_list(-1)) == []:

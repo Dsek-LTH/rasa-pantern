@@ -20,9 +20,7 @@ class SqliteHandler(Database):
 
         sqlite3.register_adapter(datetime, convert_to_naive_timestamp)
 
-        sqlite3.register_converter(
-            "TIMESTAMP", lambda s: datetime.fromisoformat(s.decode())
-        )
+        sqlite3.register_converter("TIMESTAMP", lambda s: datetime.fromisoformat(s.decode()))
 
         # We store time-deltas in ms instead of µs just so we don't overload
         # the integer type. It can support intervals up to 292 years or so, but
@@ -30,13 +28,9 @@ class SqliteHandler(Database):
         # like we really need the precison anyways
         sqlite3.register_adapter(
             timedelta,
-            lambda td: td.days * 86400000
-            + td.seconds * 1000
-            + td.microseconds // 1000,  # ms
+            lambda td: td.days * 86400000 + td.seconds * 1000 + td.microseconds // 1000,  # ms
         )
-        sqlite3.register_converter(
-            "INTERVAL", lambda s: timedelta(milliseconds=int(s))
-        )
+        sqlite3.register_converter("INTERVAL", lambda s: timedelta(milliseconds=int(s)))
 
     @override
     async def execute_query(
@@ -71,9 +65,7 @@ class SqliteHandler(Database):
                     result = await cursor.fetchone()
                     if not result:
                         return None
-                    pairs: dict[
-                        str, str | int | datetime | timedelta | bool
-                    ] = {}
+                    pairs: dict[str, str | int | datetime | timedelta | bool] = {}
                     for key in result.keys():
                         pairs[key] = result.__getitem__(key)
                 except Error as e:
@@ -95,13 +87,9 @@ class SqliteHandler(Database):
                     result = await cursor.fetchall()
                     if not result:
                         return None
-                    output: list[
-                        dict[str, str | int | datetime | timedelta | bool]
-                    ] = []
+                    output: list[dict[str, str | int | datetime | timedelta | bool]] = []
                     for entry in result:
-                        pairs: dict[
-                            str, str | int | datetime | timedelta | bool
-                        ] = {}
+                        pairs: dict[str, str | int | datetime | timedelta | bool] = {}
                         for key in entry.keys():
                             pairs[key] = entry.__getitem__(key)
                         output.append(pairs)

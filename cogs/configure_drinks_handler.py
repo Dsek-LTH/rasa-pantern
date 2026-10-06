@@ -3,14 +3,7 @@ from __future__ import annotations
 from typing import final, override
 
 import discord
-from discord import (
-    InteractionMessage,
-    PartialMessage,
-    Permissions,
-    abc,
-    app_commands,
-    ui,
-)
+from discord import InteractionMessage, PartialMessage, Permissions, abc, app_commands, ui
 from discord.ext import commands
 
 from db_handling.handler import DBHandler
@@ -64,9 +57,7 @@ class ConfigureDrinksView(ui.LayoutView):
         self,
         interaction: discord.Interaction,
     ):
-        _ = await interaction.response.send_modal(
-            RemoveDrinkModal(self, self.drink_list)
-        )
+        _ = await interaction.response.send_modal(RemoveDrinkModal(self, self.drink_list))
 
     async def update_drink_list(self):
         assert self.message
@@ -81,9 +72,7 @@ class ConfigureDrinksView(ui.LayoutView):
         return ConfigureDrinksView(guild_id, drink_list, db)
 
     @classmethod
-    async def create_deactivated(
-        cls, message: PartialMessage, guild_id: int, db: DBHandler
-    ):
+    async def create_deactivated(cls, message: PartialMessage, guild_id: int, db: DBHandler):
         drink_list = await db.get_drink_option_list(guild_id)
         view = ConfigureDrinksView(guild_id, drink_list, db)
         view.message = message
@@ -106,11 +95,8 @@ class AddDrinkModal(ui.Modal, title="add drink"):
     @override
     async def on_submit(self, interaction: discord.Interaction):
         assert isinstance(self.name.component, ui.TextInput)
-        if (
-            self.name.component.value
-            in await self.drinks_view.db.get_drink_option_list(
-                self.drinks_view.guild_id
-            )
+        if self.name.component.value in await self.drinks_view.db.get_drink_option_list(
+            self.drinks_view.guild_id
         ):
             _ = await interaction.response.send_message(
                 f"{self.name.component.value} already exists in the list."
@@ -126,9 +112,7 @@ class AddDrinkModal(ui.Modal, title="add drink"):
 
 
 class RemoveDrinkModal(ui.Modal, title="remove drink"):
-    def __init__(
-        self, drinks_view: ConfigureDrinksView, drinks_list: list[str]
-    ):
+    def __init__(self, drinks_view: ConfigureDrinksView, drinks_list: list[str]):
         super().__init__()
         self.drinks_view: ConfigureDrinksView = drinks_view
         self.drinks_list: list[str] = drinks_list
@@ -153,8 +137,7 @@ class RemoveDrinkModal(ui.Modal, title="remove drink"):
                 component=ui.Select(
                     placeholder="select a drink",
                     options=[
-                        discord.SelectOption(label=name, value=name)
-                        for name in self.drinks_list
+                        discord.SelectOption(label=name, value=name) for name in self.drinks_list
                     ],
                     max_values=1,
                 ),
@@ -172,9 +155,7 @@ class RemoveDrinkModal(ui.Modal, title="remove drink"):
             assert isinstance(self.select_name.component, ui.Select)
             value = self.select_name.component.values[0]
 
-        await self.drinks_view.db.remove_drink_option(
-            self.drinks_view.guild_id, value
-        )
+        await self.drinks_view.db.remove_drink_option(self.drinks_view.guild_id, value)
         _ = await interaction.response.send_message(
             f"Removing {value} from the list of drinks!",
             ephemeral=True,
@@ -214,10 +195,8 @@ class ConfigureDrinksHandler(commands.Cog):
             for role_id in allowed_roles_raw.split():
                 role = interaction.guild.get_role(int(role_id))
                 if not role:
-                    print(
-                        f"Error role with id {role_id} doesn't exist\
-                        in Guild: {interaction.guild.name}"
-                    )
+                    print(f"Error role with id {role_id} doesn't exist\
+                        in Guild: {interaction.guild.name}")
                 if role in user_roles:
                     return True
 
@@ -249,10 +228,8 @@ class ConfigureDrinksHandler(commands.Cog):
                 # WARN: This doesn't properly remove the existing class afaik,
                 # which in theory could lead to memory leaks. But then again...
                 # It's python.
-                old_view: ConfigureDrinksView = (
-                    await ConfigureDrinksView.create_deactivated(
-                        message, interaction.guild_id, self.bot.db
-                    )
+                old_view: ConfigureDrinksView = await ConfigureDrinksView.create_deactivated(
+                    message, interaction.guild_id, self.bot.db
                 )
                 _ = await message.edit(view=old_view)
 
@@ -285,18 +262,14 @@ def _get_drink_string(drink_list: list[str]) -> str:
 async def setup(bot: PanternBot) -> None:
     print("\t\tloading config from database:")
     # Holds guild_id and a string id with <channel_id>|<message_id>
-    settings = await bot.db.get_settings(
-        CogSetting.CONFIGURE_DRINKS_HANDLER, "config_message"
-    )
+    settings = await bot.db.get_settings(CogSetting.CONFIGURE_DRINKS_HANDLER, "config_message")
     if settings:
         for guild_id in settings:
             guild = bot.get_guild(guild_id)
             print(f"\t\t\t loaded config for guild: {guild}, id: {guild_id}")
             view = await ConfigureDrinksView.create(guild_id, bot.db)
             if guild:
-                channel_id, message_id = map(
-                    int, settings[guild_id].split("|")
-                )
+                channel_id, message_id = map(int, settings[guild_id].split("|"))
                 channel = guild.get_channel_or_thread(channel_id)
                 if isinstance(channel, abc.Messageable):
                     view.message = channel.get_partial_message(message_id)

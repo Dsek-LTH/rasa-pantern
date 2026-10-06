@@ -22,9 +22,7 @@ class PostresqlHandler(Database):
         self.pool: asyncpg.Pool = pool
 
     @classmethod
-    async def create(
-        cls, db_name: str, user: str, password: str, host: str
-    ) -> PostresqlHandler:
+    async def create(cls, db_name: str, user: str, password: str, host: str) -> PostresqlHandler:
         pool: asyncpg.Pool = await asyncpg.create_pool(
             user=user, password=password, database=db_name, host=host
         )

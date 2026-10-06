@@ -23,8 +23,7 @@ class RoleMapping:
     @override
     def __repr__(self) -> str:
         return (
-            f"role: {self.role_id} linking to "
-            f"{self.discord_role_id} in guild {self.guild_id}"
+            f"role: {self.role_id} linking to " f"{self.discord_role_id} in guild {self.guild_id}"
         )
 
 

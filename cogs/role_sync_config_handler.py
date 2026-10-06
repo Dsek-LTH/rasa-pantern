@@ -3,15 +3,7 @@ from __future__ import annotations
 from typing import final, override
 
 import discord
-from discord import (
-    Client,
-    Interaction,
-    Message,
-    PartialMessage,
-    Permissions,
-    app_commands,
-    ui,
-)
+from discord import Client, Interaction, Message, PartialMessage, Permissions, app_commands, ui
 from discord.abc import GuildChannel, Messageable
 from discord.ext import commands
 
@@ -27,31 +19,23 @@ class RoleConfigView(ui.LayoutView):
         self.db: DBHandler = db
         self.role_map: RoleMapping = role_map
 
-        self.edit_discord_role_button: ui.Button[RoleConfigView] = ui.Button[
-            RoleConfigView
-        ](
+        self.edit_discord_role_button: ui.Button[RoleConfigView] = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.grey,
             label="Edit Discord role",
-            custom_id=(
-                "RCV-edit-discord-btn-"
-                f"{role_map.discord_role_id}{role_map.role_id}"
-            )[:100],
+            custom_id=("RCV-edit-discord-btn-" f"{role_map.discord_role_id}{role_map.role_id}")[
+                :100
+            ],
         )
         self.edit_discord_role_button.callback = self.edit_discord_id_callback
 
-        self.edit_external_role_button: ui.Button[RoleConfigView] = ui.Button[
-            RoleConfigView
-        ](
+        self.edit_external_role_button: ui.Button[RoleConfigView] = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.grey,
             label="Edit external role",
-            custom_id=(
-                "RCV-edit-external-btn-"
-                f"{role_map.discord_role_id}{role_map.role_id}"
-            )[:100],
+            custom_id=("RCV-edit-external-btn-" f"{role_map.discord_role_id}{role_map.role_id}")[
+                :100
+            ],
         )
-        self.edit_external_role_button.callback = (
-            self.edit_external_id_callback
-        )
+        self.edit_external_role_button.callback = self.edit_external_id_callback
 
         self.container: ui.Container[RoleConfigView] = ui.Container(
             ui.TextDisplay(
@@ -75,51 +59,38 @@ class RoleConfigView(ui.LayoutView):
         #  .callback = edit_discord_id
         _ = self.add_item(self.container)
 
-        self.delete_role_mapping_button: ui.Button[RoleConfigView] = ui.Button[
-            RoleConfigView
-        ](
+        self.delete_role_mapping_button: ui.Button[RoleConfigView] = ui.Button[RoleConfigView](
             style=discord.ButtonStyle.danger,
             label="Delete config mapping",
-            custom_id=(
-                "RCV-edit-delete-btn-"
-                f"{role_map.discord_role_id}{role_map.role_id}"
-            )[:100],
+            custom_id=("RCV-edit-delete-btn-" f"{role_map.discord_role_id}{role_map.role_id}")[
+                :100
+            ],
         )
-        self.delete_role_mapping_button.callback = (
-            self.delete_role_mapping_callback
-        )
+        self.delete_role_mapping_button.callback = self.delete_role_mapping_callback
 
         self.delete_row: ui.ActionRow[RoleConfigView] = discord.ui.ActionRow(
             self.delete_role_mapping_button
         )
         _ = self.add_item(self.delete_row)
 
-    async def edit_discord_id_callback(
-        self, interaction: discord.Interaction
-    ) -> None:
+    async def edit_discord_id_callback(self, interaction: discord.Interaction) -> None:
         assert interaction.guild
         assert self.role_map
-        discord_role = interaction.guild.get_role(
-            self.role_map.discord_role_id
-        )
+        discord_role = interaction.guild.get_role(self.role_map.discord_role_id)
         discord_role_modal: ui.Modal = ui.Modal(title="Edit discord role")
         role_select: ui.RoleSelect[RoleConfigView] = ui.RoleSelect(
             required=True,
             placeholder=(discord_role.name if discord_role else "NULL"),
         )
 
-        _ = discord_role_modal.add_item(
-            ui.Label(text="Set discord role", component=role_select)
-        )
-        discord_role_modal.on_submit = (
-            lambda interaction: self.set_discord_role(interaction, role_select)
+        _ = discord_role_modal.add_item(ui.Label(text="Set discord role", component=role_select))
+        discord_role_modal.on_submit = lambda interaction: self.set_discord_role(
+            interaction, role_select
         )
 
         _ = await interaction.response.send_modal(discord_role_modal)
 
-    async def edit_external_id_callback(
-        self, interaction: discord.Interaction
-    ) -> None:
+    async def edit_external_id_callback(self, interaction: discord.Interaction) -> None:
         assert self.role_map
         external_role_modal: ui.Modal = ui.Modal(title="Edit external role")
         text_input: ui.TextInput[RoleConfigView] = ui.TextInput(
@@ -129,14 +100,12 @@ class RoleConfigView(ui.LayoutView):
         )
         _ = external_role_modal.add_item(text_input)
 
-        external_role_modal.on_submit = (
-            lambda interaction: self.set_external_role(interaction, text_input)
+        external_role_modal.on_submit = lambda interaction: self.set_external_role(
+            interaction, text_input
         )
         _ = await interaction.response.send_modal(external_role_modal)
 
-    async def delete_role_mapping_callback(
-        self, interaction: discord.Interaction
-    ) -> None:
+    async def delete_role_mapping_callback(self, interaction: discord.Interaction) -> None:
         confirm_delete_modal: ui.Modal = ui.Modal(title="Confirm deletion")
         _ = confirm_delete_modal.add_item(
             ui.TextDisplay(
@@ -207,18 +176,15 @@ class RoleConfigView(ui.LayoutView):
         )
 
         self.edit_discord_role_button.custom_id = (
-            "RCV-edit-discord-btn-"
-            f"{self.role_map.discord_role_id}{self.role_map.role_id}"
+            "RCV-edit-discord-btn-" f"{self.role_map.discord_role_id}{self.role_map.role_id}"
         )[:100]
 
         self.edit_external_role_button.custom_id = (
-            "RCV-edit-external-btn-"
-            f"{self.role_map.discord_role_id}{self.role_map.role_id}"
+            "RCV-edit-external-btn-" f"{self.role_map.discord_role_id}{self.role_map.role_id}"
         )[:100]
 
         self.delete_role_mapping_button.custom_id = (
-            "RCV-edit-delete-btn-"
-            f"{self.role_map.discord_role_id}{self.role_map.role_id}"
+            "RCV-edit-delete-btn-" f"{self.role_map.discord_role_id}{self.role_map.role_id}"
         )[:100]
 
         textDisplay.content = (
@@ -271,11 +237,7 @@ class SetupChannelModal(ui.Modal, title="Set up role sync config channel"):
             str(self.channel.component.values[0].id),
         )
         _ = await interaction.response.send_message(
-            (
-                "Successfully set "
-                f"<#{self.channel.component.values[0].id}> "
-                "as config channel"
-            )
+            ("Successfully set " f"<#{self.channel.component.values[0].id}> " "as config channel")
         )
 
 
@@ -316,10 +278,7 @@ class AddRoleConfig(ui.Modal, title="Add role config"):
         channel = interaction.guild.get_channel_or_thread(int(channel_id))
         if not isinstance(channel, GuildChannel):
             _ = interaction.response.send_message(
-                (
-                    "Error whilst trying to find channel,"
-                    "please contact an admin."
-                ),
+                ("Error whilst trying to find channel," "please contact an admin."),
                 ephemeral=True,
             )
             print(
@@ -358,9 +317,7 @@ class RoleSyncConfigHandler(commands.Cog):
     @app_commands.command()
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
-    async def initialize_role_sync_config(
-        self, interaction: discord.Interaction
-    ) -> None:
+    async def initialize_role_sync_config(self, interaction: discord.Interaction) -> None:
         """
         Initialize the bot to start configuring role sync by choosing what
         channel to send messages in.
@@ -390,13 +347,9 @@ class RoleSyncConfigHandler(commands.Cog):
             _ = await interaction.response.send_modal(modal)
             return
 
-        _ = await interaction.response.send_modal(
-            SetupChannelModal(self.bot.db)
-        )
+        _ = await interaction.response.send_modal(SetupChannelModal(self.bot.db))
 
-    async def reset_configs(
-        self, interaction: discord.Interaction[Client]
-    ) -> None:
+    async def reset_configs(self, interaction: discord.Interaction[Client]) -> None:
         assert interaction.guild
         old_channel_id = await self.bot.db.get_setting(
             interaction.guild.id,
@@ -410,17 +363,13 @@ class RoleSyncConfigHandler(commands.Cog):
             CogSetting.ROLE_SYNC_CONFIG_HANDLER,
             "config_channel_id",
         )
-        mappings: list[RoleMapping] = await self.bot.db.get_guild_role_configs(
-            interaction.guild.id
-        )
+        mappings: list[RoleMapping] = await self.bot.db.get_guild_role_configs(interaction.guild.id)
         channel = interaction.guild.get_channel_or_thread(int(old_channel_id))
         if channel:
             assert isinstance(channel, Messageable)
             for mapping in mappings:
                 if mapping.message_id:
-                    _ = await channel.get_partial_message(
-                        mapping.message_id
-                    ).delete()
+                    _ = await channel.get_partial_message(mapping.message_id).delete()
 
         await self.bot.db.purge_role_configs(interaction.guild.id)
         _ = await interaction.response.send_message(
@@ -434,9 +383,7 @@ class RoleSyncConfigHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     # TODO: Make sure we can't make two identical mappings
-    async def create_role_mapping(
-        self, interaction: discord.Interaction
-    ) -> None:
+    async def create_role_mapping(self, interaction: discord.Interaction) -> None:
         """
         Creates a message controlling the mapping between a discord role and an
         external role
@@ -481,12 +428,7 @@ async def setup(bot: PanternBot) -> None:
             try:
                 guild = await bot.fetch_guild(mapping.guild_id)
             except discord.NotFound:
-                print(
-                    (
-                        f"guild with ID: {mapping.guild_id}"
-                        "could not be found, skipping"
-                    )
-                )
+                print((f"guild with ID: {mapping.guild_id}" "could not be found, skipping"))
                 continue
 
         print(
@@ -502,12 +444,7 @@ async def setup(bot: PanternBot) -> None:
             try:
                 channel = await guild.fetch_channel(mapping.channel_id)
             except discord.NotFound:
-                print(
-                    (
-                        f"channel with ID: {mapping.channel_id} "
-                        "could not be found, skipping"
-                    )
-                )
+                print((f"channel with ID: {mapping.channel_id} " "could not be found, skipping"))
                 continue
         assert isinstance(channel, Messageable)
         message = channel.get_partial_message(mapping.message_id)

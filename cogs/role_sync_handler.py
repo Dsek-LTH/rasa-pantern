@@ -11,15 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncpg
 import discord
 import humanize
-from discord import (
-    Guild,
-    HTTPException,
-    Interaction,
-    NotFound,
-    Permissions,
-    Role,
-    app_commands,
-)
+from discord import Guild, HTTPException, Interaction, NotFound, Permissions, Role, app_commands
 from discord.ext import commands
 
 from helpers import CogSetting, SyncInfo
@@ -65,11 +57,7 @@ class SyncOutputData:
         self.non_syncable_roles.append(role_id)
 
     def get_changed_amount(self) -> int:
-        return (
-            self.total_users_to_change
-            - self.failed_users
-            - self.non_changed_users
-        )
+        return self.total_users_to_change - self.failed_users - self.non_changed_users
 
 
 async def get_external_role_list() -> dict[str, list[str]]:
@@ -214,9 +202,7 @@ class RoleSyncHandler(commands.Cog):
             if wait_time > 0:
                 try:
                     self.add_time_event.clear()
-                    _ = await asyncio.wait_for(
-                        self.add_time_event.wait(), timeout=wait_time
-                    )
+                    _ = await asyncio.wait_for(self.add_time_event.wait(), timeout=wait_time)
                     # We have added a new time, go back to top of function
                     continue
                 except asyncio.TimeoutError:
@@ -255,21 +241,14 @@ class RoleSyncHandler(commands.Cog):
         output_data = await self._sync(guild)
         await self.bot.db.remove_sync_job(sync_info)
 
-        print(
-            (
-                f"auto sync run at: {sync_info.run_at} "
-                f"in guild {guild.name} "
-                "has completed"
-            )
-        )
+        print(f"auto sync run at: {sync_info.run_at} in guild {guild.name} has completed")
         print(output_data)
         if len(self.sync_times) > 0:
             # print(self.sync_times)
             pass
         if sync_info.re_run:
             if sync_info.re_run_rate:
-                new_sync_info = sync_info
-                new_sync_info.run_at = sync_info.run_at + sync_info.re_run_rate
+                new_sync_info = replace(sync_info, run_at=sync_info.run_at + sync_info.re_run_rate)
                 await self.add_sync_time(new_sync_info)
                 print(f"Re-scheduled sync for {new_sync_info.run_at}")
             else:
@@ -288,9 +267,7 @@ class RoleSyncHandler(commands.Cog):
         # would be nice to keep in mind).
         print("starting sync")
         if (
-            await self.bot.db.get_setting(
-                guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
-            )
+            await self.bot.db.get_setting(guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run")
             == "True"
         ):
             print("!!!RUNNING IN DRY MODE!!!")
@@ -334,17 +311,13 @@ class RoleSyncHandler(commands.Cog):
                 if role_is_synced:
                     new_roles[user.id].add(role.id)
 
-        external_linked_users: dict[str, list[str]] = (
-            await get_external_role_list()
-        )
+        external_linked_users: dict[str, list[str]] = await get_external_role_list()
 
         # Maps discord user id to list of external roles
         linked_users: dict[int, list[str]] = {}
 
         for user_id in external_linked_users:
-            discord_user_id = await self.bot.db.get_discordId_from_externalId(
-                user_id
-            )
+            discord_user_id = await self.bot.db.get_discordId_from_externalId(user_id)
             if discord_user_id:
                 linked_users[discord_user_id] = external_linked_users[user_id]
             else:
@@ -426,22 +399,16 @@ class RoleSyncHandler(commands.Cog):
             )
             try:
                 if (
-                    await self.bot.db.get_setting(
-                        guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run"
-                    )
+                    await self.bot.db.get_setting(guild.id, CogSetting.ROLE_SYNC_HANDLER, "dry_run")
                     == "False"
                 ):
                     _ = await member.edit(
-                        roles=[
-                            role_LUT[role_id] for role_id in new_roles[user_id]
-                        ]
+                        roles=[role_LUT[role_id] for role_id in new_roles[user_id]]
                     )
                 pass
 
             except discord.Forbidden as e:
-                user_role_list = [
-                    role_LUT[role_id].name for role_id in new_roles[user_id]
-                ]
+                user_role_list = [role_LUT[role_id].name for role_id in new_roles[user_id]]
                 print(
                     (
                         "\n ERROR: "
@@ -480,10 +447,7 @@ class RoleSyncHandler(commands.Cog):
         data = await self._sync(interaction.guild)
 
         sync_string = (
-            (
-                "Next automatic sync "
-                f"<t:{int(self.sync_times[0].run_at.timestamp())}:R>."
-            )
+            ("Next automatic sync " f"<t:{int(self.sync_times[0].run_at.timestamp())}:R>.")
             if len(self.sync_times) > 0
             else "No automatic sync running."
         )
@@ -548,9 +512,7 @@ class RoleSyncHandler(commands.Cog):
             "7:00:00",
             "30:00:00",
         ]
-        output = [
-            rec for rec in recommended_options if rec.startswith(current)
-        ]
+        output = [rec for rec in recommended_options if rec.startswith(current)]
         return [app_commands.Choice(name=o, value=o) for o in output]
 
     @app_commands.command()
@@ -558,17 +520,10 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.default_permissions(Permissions(administrator=True))
     @app_commands.describe(
         sync_at="The time at which the bot should sync the roles (HH:MM)",
-        re_run=(
-            "Whether the sync should automatically "
-            "re-run after it's complete."
-        ),
-        re_run_rate=(
-            "How often the sync should re-run (written as DD:HH:MM or HH:MM)"
-        ),
+        re_run=("Whether the sync should automatically " "re-run after it's complete."),
+        re_run_rate=("How often the sync should re-run (written as DD:HH:MM or HH:MM)"),
     )
-    @app_commands.autocomplete(
-        sync_at=sync_at_autocomplete, re_run_rate=re_run_rate_autocomplete
-    )
+    @app_commands.autocomplete(sync_at=sync_at_autocomplete, re_run_rate=re_run_rate_autocomplete)
     async def autosync(
         self,
         interaction: Interaction,
@@ -585,10 +540,7 @@ class RoleSyncHandler(commands.Cog):
             _ = datetime.strptime(sync_at, "%H:%M").time()
         except ValueError:
             _ = await interaction.response.send_message(
-                (
-                    f'"{sync_at}" is an invalid format for sync_at. '
-                    "Use HH:MM in 24-hour format."
-                ),
+                f'"{sync_at}" is an invalid format for sync_at.  Use HH:MM in 24-hour format.',
                 ephemeral=True,
             )
             return
@@ -640,8 +592,8 @@ class RoleSyncHandler(commands.Cog):
                 except ValueError:
                     _ = await interaction.response.send_message(
                         (
-                            f'"{re_run_rate}" is an invalid format for'
-                            "re_run_rate. Use HH:MM or DD:HH:MM in"
+                            f'"{re_run_rate}" is an invalid format for '
+                            "re_run_rate. Use HH:MM or DD:HH:MM in "
                             "24-hour format."
                         ),
                         ephemeral=True,
@@ -652,15 +604,11 @@ class RoleSyncHandler(commands.Cog):
         else:
             re_run_obj = None
 
-        sync_info = SyncInfo(
-            sync_time, interaction.guild_id, re_run, re_run_obj
-        )
+        sync_info = SyncInfo(sync_time, interaction.guild_id, re_run, re_run_obj)
         await self.add_sync_time(sync_info)
         recurring: str = "."
         if re_run:
-            recurring = (
-                f", recurring every {humanize.precisedelta(re_run_obj)}."
-            )
+            recurring = f", recurring every {humanize.precisedelta(re_run_obj)}."
         _ = await interaction.response.send_message(
             f"Scheduled sync <t:{int(sync_time.timestamp())}:R>{recurring}"
         )
@@ -668,11 +616,7 @@ class RoleSyncHandler(commands.Cog):
     async def timezone_autocomplete(
         self, _: Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        matches = [
-            tz
-            for tz in zoneinfo.available_timezones()
-            if current.lower() in tz.lower()
-        ]
+        matches = [tz for tz in zoneinfo.available_timezones() if current.lower() in tz.lower()]
         # Discord only supports 25 matches
         matches = matches[:25]
         return [app_commands.Choice(name=tz, value=tz) for tz in matches]
@@ -691,9 +635,7 @@ class RoleSyncHandler(commands.Cog):
         try:
             _ = ZoneInfo(tz)
         except ZoneInfoNotFoundError:
-            _ = await interaction.response.send_message(
-                f"{tz} is not a valid Olson timezone"
-            )
+            _ = await interaction.response.send_message(f"{tz} is not a valid Olson timezone")
             return
 
         # TODO: Implement an upsert in the database so we can get around this
@@ -720,9 +662,7 @@ class RoleSyncHandler(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(Permissions(administrator=True))
     @app_commands.describe(enabled="Whether to run in dry_run mode or not")
-    async def set_dry_run(
-        self, interaction: Interaction, enabled: bool
-    ) -> None:
+    async def set_dry_run(self, interaction: Interaction, enabled: bool) -> None:
         """
         Configures if the bot should dry run or not
         (i.e. if the bot should refrain from changing any roles or not)
@@ -748,9 +688,7 @@ class RoleSyncHandler(commands.Cog):
                 "dry_run",
                 str(enabled),
             )
-        _ = await interaction.response.send_message(
-            f"Set dry-run to: {enabled}"
-        )
+        _ = await interaction.response.send_message(f"Set dry-run to: {enabled}")
 
     @app_commands.command()
     @app_commands.guild_only()

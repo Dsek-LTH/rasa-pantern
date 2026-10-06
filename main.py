@@ -50,9 +50,7 @@ class PanternBot(commands.Bot):
 
         if db_name and db_username and db_password and db_host:
             print("Found and connected to postgres database")
-            db = await PostresqlHandler.create(
-                db_name, db_username, db_password, db_host
-            )
+            db = await PostresqlHandler.create(db_name, db_username, db_password, db_host)
         elif db_file:
             print("Found and loaded sqlite database.")
             db = SqliteHandler(db_file)
