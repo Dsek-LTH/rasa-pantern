@@ -619,6 +619,27 @@ class DBHandler:
             return int(response["user_id"])
         return None
 
+    async def get_all_discordIds_from_externalIds(self) -> dict[str, int]:
+        """
+        Gets all discord user ids mapped to all external ids in database.
+        Returns:
+            dict[str, int]: a dictionary mapping external id to discord id
+        """
+        get_discord_id_query = """
+            select stil_id, user_id
+            from connected_accounts
+        """
+        response = await self.db.execute_multiple_read_query(get_discord_id_query)
+        if not response:
+            return {}
+
+        return_dict: dict[str, int] = {}
+        for user in response:
+            assert isinstance(user["stil_id"], str)
+            assert isinstance(user["user_id"], str)
+            return_dict[user["stil_id"]] = int(user["user_id"])
+        return return_dict
+
     async def get_externalId_from_discordId_(self, discord_id: int) -> str | None:
         """
         Gets the external user id that maps to the given discord id.

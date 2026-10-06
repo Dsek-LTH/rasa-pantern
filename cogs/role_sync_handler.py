@@ -170,7 +170,6 @@ class RoleSyncHandler(commands.Cog):
                     "server(s) whilst offline. Syncing them now."
                 )
             )
-            synced_gulids: list[int] = []
             for guild_id in guilds_to_sync:
                 await self.run_timer_sync(guilds_to_sync[guild_id])
 
@@ -302,24 +301,32 @@ class RoleSyncHandler(commands.Cog):
                     new_roles[user.id].add(role.id)
                 continue
 
-            role_is_synced = role.id not in [
+            role_should_be_synced = role.id not in [
                 sync_role.discord_role_id for sync_role in roles_to_sync
             ]
             # If we aren't syncing this role, don't add it to the users list of
             # new roles
             for user in role.members:
                 old_roles[user.id].add(role.id)
-                if role_is_synced:
+                if role_should_be_synced:
                     new_roles[user.id].add(role.id)
+                else:
+                    _ = new_roles.setdefault(user.id, set())
 
         external_linked_users: dict[str, list[str]] = await get_external_role_list()
 
         # Maps discord user id to list of external roles
         linked_users: dict[int, list[str]] = {}
 
+        user_LUT: dict[str, int] = await self.bot.db.get_all_discordIds_from_externalIds()
+        if not user_LUT:
+            print("ERROR, could not load any users from DB")
+            user_LUT = {}
+
         for user_id in external_linked_users:
-            discord_user_id = await self.bot.db.get_discordId_from_externalId(user_id)
-            if discord_user_id:
+            discord_user_id = user_LUT.get(user_id)
+
+            if discord_user_id is not None:
                 linked_users[discord_user_id] = external_linked_users[user_id]
             else:
                 # This would spam the logs a tad too much maybe we only check
@@ -602,6 +609,7 @@ class RoleSyncHandler(commands.Cog):
                     _ = await interaction.response.send_message(
                         f'"{re_run_rate} is too small. It has to be at least one hour'
                     )
+                    return
                 re_run_obj = timedelta(days=days, hours=hours, minutes=minutes, seconds=0)
 
             except ValueError:
